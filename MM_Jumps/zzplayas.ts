@@ -148,11 +148,7 @@ class zzplayas implements IPlugin {
       return;
     }
 
-    /* use regular jump if player is holding something */
-    if(this.core.link.state === LinkState.HOLDING_ACTOR) {
-      this.applyJumpSwap(LINK_ANIMETION_OFFSETS.JUMP_REGULAR);
-    }
-    else switch (this.core.link.get_anim_id()) {
+    switch (this.core.link.get_anim_id()) {
       /* Don't update the jumping and landing animations while they're playing */
       case GAMEPLAY_KEEP_OFFSETS.ANIM_JUMP:
       case GAMEPLAY_KEEP_OFFSETS.ANIM_LAND:
