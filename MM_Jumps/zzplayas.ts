@@ -4,7 +4,7 @@ import { OotOnlineEvents } from './OotoAPI/OotoAPI';
 // import { EventHandler } from 'modloader64_api/EventHandler';
 import { IOOTCore, LinkState } from 'modloader64_api/OOT/OOTAPI';
 import { InjectCore } from 'modloader64_api/CoreInjection';
-import { Z64RomTools } from 'Z64Lib/API/Z64RomTools'
+// import { Z64RomTools } from 'Z64Lib/API/Z64RomTools'
 // import { Z64LibEvents } from 'Z64Lib/API/Z64LibEvents';
 import fse from 'fs-extra';
 import path from 'path';
@@ -88,7 +88,6 @@ class zzplayas implements IPlugin {
 
     this.ModLoader.emulator.rdramWritePtrBuffer(GAMEPLAY_KEEP_PTR, GAMEPLAY_KEEP_OFFSETS.ANIM_JUMP, createAnimTableEntry(animOffset, jumpLen));
     this.ModLoader.emulator.rdramWritePtrBuffer(GAMEPLAY_KEEP_PTR, GAMEPLAY_KEEP_OFFSETS.ANIM_LAND, createAnimTableEntry(landOffset, landLen));
-    return jumpLen + landLen;
   }
 
   selectJumpRandomly() {
@@ -148,11 +147,7 @@ class zzplayas implements IPlugin {
       return;
     }
 
-    /* use regular jump if player is holding something or Z-targetting */
-    if( this.core.link.state === LinkState.Z_TARGETING || this.core.link.state === LinkState.HOLDING_ACTOR) {
-      this.applyJumpSwap(LINK_ANIMETION_OFFSETS.JUMP_REGULAR);
-    }
-    else switch (this.core.link.get_anim_id()) {
+    switch (this.core.link.get_anim_id()) {
       /* Don't update the jumping and landing animations while they're playing */
       case GAMEPLAY_KEEP_OFFSETS.ANIM_JUMP:
       case GAMEPLAY_KEEP_OFFSETS.ANIM_LAND:
@@ -161,7 +156,11 @@ class zzplayas implements IPlugin {
         break;
     
       default:
-        this.applyJumpSwap(this.selectJumpRandomly());
+        /* use regular jump if player is holding something */
+        if(this.core.link.state === LinkState.HOLDING_ACTOR || this.core.link.state === LinkState.UNKNOWN) {
+          this.applyJumpSwap(LINK_ANIMETION_OFFSETS.JUMP_REGULAR);
+        }
+        else this.applyJumpSwap(this.selectJumpRandomly());
         break;
     }
   }
