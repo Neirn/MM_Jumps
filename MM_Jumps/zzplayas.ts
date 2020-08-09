@@ -148,8 +148,8 @@ class zzplayas implements IPlugin {
       return;
     }
 
-    /* use regular jump if player is holding something */
-    if(this.core.link.state === LinkState.HOLDING_ACTOR) {
+    /* use regular jump if player is holding something or Z-targetting */
+    if( this.core.link.state === LinkState.Z_TARGETING || this.core.link.state === LinkState.HOLDING_ACTOR) {
       this.applyJumpSwap(LINK_ANIMETION_OFFSETS.JUMP_REGULAR);
     }
     else switch (this.core.link.get_anim_id()) {
