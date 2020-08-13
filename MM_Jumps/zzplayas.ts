@@ -2,7 +2,7 @@ import { IPlugin, IModLoaderAPI, ModLoaderEvents } from 'modloader64_api/IModLoa
 import { bus } from 'modloader64_api/EventHandler';
 import { OotOnlineEvents } from './OotoAPI/OotoAPI';
 // import { EventHandler } from 'modloader64_api/EventHandler';
-import { IOOTCore, LinkState } from 'modloader64_api/OOT/OOTAPI';
+import { IOOTCore, LinkState, LinkState2 } from 'modloader64_api/OOT/OOTAPI';
 import { InjectCore } from 'modloader64_api/CoreInjection';
 // import { Z64RomTools } from 'Z64Lib/API/Z64RomTools'
 // import { Z64LibEvents } from 'Z64Lib/API/Z64LibEvents';
@@ -28,9 +28,12 @@ interface mm_jumps_options {
 const enum LINK_ANIMETION_OFFSETS {
   JUMP_REGULAR = 0x1B4B00,
   JUMP_FLIP = 0xD710,
-  JUMP_SOMERSAULT = 0xDDDE,
-  LAND_SOMERSAULT = 0xE532,
   LAND_REGULAR = 0x1B72E0,
+  JUMP_SOMERSAULT = 0xDDDE,
+  LAND_FLIP = 0xA1E80,
+  LAND_SOMERSAULT = 0xA254E,
+  FALL = 0x19D3E0,
+  FALL_FREE = 0x19DEE0
 }
 
 const GAMEPLAY_KEEP_PTR = 0x8016A66C;
@@ -38,15 +41,23 @@ const GAMEPLAY_KEEP_PTR = 0x8016A66C;
 const enum GAMEPLAY_KEEP_OFFSETS {
   ANIM_JUMP = 0x3148,
   ANIM_LAND = 0x3150,
+  ANIM_FALL_LAND = 0x3020,
+  ANIM_FALL_LAND_UNARMED = 0x3028,
   ANIM_LAND_OTHER1 = 0x3168,
-  ANIM_LAND_OTHER2 = 0x3170
+  ANIM_LAND_OTHER2 = 0x3170,
+  ANIM_SHORT_JUMP = 0x2FD8,
+  ANIM_SHORT_JUMP_LANDING = 0x2FE0,
+  ANIM_NORMAL_LANDING_WAIT = 0x3040,
 }
 
 const enum ANIM_LENGTHS {
-  DEFAULT_JUMP = 0xD,
-  DEFAULT_LAND = 0x10,
-  SOMERSAULT_JUMP =  0xE,
-  SOMERSAULT_LAND = 0x10
+  JUMP_DEFAULT = 0xD,
+  LAND_DEFAULT = 0x10,
+  LAND_DEFAULT_FALL = 0x15,
+  JUMP_FLIP = 0xD,
+  LAND_FLIP = 0xD,
+  JUMP_SOMERSAULT =  0xE,
+  LAND_SOMERSAULT = 0x10
 }
 
 function getRandomInt(max: number) {
@@ -70,24 +81,70 @@ class zzplayas implements IPlugin {
   defaultWeight!: number;
   flipWeight!: number;
   somersaultWeight!: number;
+  jumpInProgress = false;
+  wasPaused = false;
+  currentJump!: number;
 
   applyJumpSwap(animOffset: number) {
-    var jumpLen;
-    var landLen;
-    var landOffset;
+    let jumpLen;
 
-    if(animOffset === LINK_ANIMETION_OFFSETS.JUMP_SOMERSAULT) {
-      jumpLen = ANIM_LENGTHS.SOMERSAULT_JUMP;
-      landLen = ANIM_LENGTHS.SOMERSAULT_LAND;
-      landOffset = LINK_ANIMETION_OFFSETS.LAND_SOMERSAULT;
-    } else {
-      jumpLen = ANIM_LENGTHS.DEFAULT_JUMP;
-      landLen = ANIM_LENGTHS.DEFAULT_LAND;
-      landOffset = LINK_ANIMETION_OFFSETS.LAND_REGULAR;
+    switch (animOffset) {
+      case LINK_ANIMETION_OFFSETS.JUMP_SOMERSAULT:
+        jumpLen = ANIM_LENGTHS.JUMP_SOMERSAULT;
+        break;
+
+      case LINK_ANIMETION_OFFSETS.JUMP_FLIP:
+        jumpLen = ANIM_LENGTHS.JUMP_FLIP;
+        break;
+    
+      default:
+        /* Just play the regular flip animation if the parameter isn't one of the two jumps */
+        animOffset = LINK_ANIMETION_OFFSETS.JUMP_REGULAR;
+        jumpLen = ANIM_LENGTHS.JUMP_DEFAULT;
+        break;
     }
 
     this.ModLoader.emulator.rdramWritePtrBuffer(GAMEPLAY_KEEP_PTR, GAMEPLAY_KEEP_OFFSETS.ANIM_JUMP, createAnimTableEntry(animOffset, jumpLen));
+    this.currentJump = animOffset;
+  }
+
+  applyLandingSwap(jumpOffset: number) {
+    let landLen;
+    let fallLen;
+    let landOffset;
+    let fallOffset;
+    let fallFreeOffset;
+
+    switch (jumpOffset) {
+      case LINK_ANIMETION_OFFSETS.JUMP_SOMERSAULT:
+        landLen = ANIM_LENGTHS.LAND_SOMERSAULT;
+        fallLen = landLen;
+        landOffset = LINK_ANIMETION_OFFSETS.LAND_SOMERSAULT;
+        fallOffset = landOffset;
+        fallFreeOffset = landOffset;
+        break;
+
+      case LINK_ANIMETION_OFFSETS.JUMP_FLIP:
+        landLen = ANIM_LENGTHS.LAND_FLIP;
+        fallLen = landLen;
+        landOffset = LINK_ANIMETION_OFFSETS.LAND_FLIP;
+        fallOffset = landOffset;
+        fallFreeOffset = landOffset;
+        break;
+    
+      default:
+        /* Just play the regular landing animation if the parameter isn't one of the two jumps */
+        landLen = ANIM_LENGTHS.LAND_DEFAULT;
+        fallLen = ANIM_LENGTHS.LAND_DEFAULT_FALL;
+        landOffset = LINK_ANIMETION_OFFSETS.LAND_REGULAR;
+        fallOffset = LINK_ANIMETION_OFFSETS.FALL;
+        fallFreeOffset = LINK_ANIMETION_OFFSETS.FALL_FREE;
+        break;
+    }
+
     this.ModLoader.emulator.rdramWritePtrBuffer(GAMEPLAY_KEEP_PTR, GAMEPLAY_KEEP_OFFSETS.ANIM_LAND, createAnimTableEntry(landOffset, landLen));
+    this.ModLoader.emulator.rdramWritePtrBuffer(GAMEPLAY_KEEP_PTR, GAMEPLAY_KEEP_OFFSETS.ANIM_FALL_LAND, createAnimTableEntry(fallOffset, fallLen));
+    this.ModLoader.emulator.rdramWritePtrBuffer(GAMEPLAY_KEEP_PTR, GAMEPLAY_KEEP_OFFSETS.ANIM_FALL_LAND_UNARMED, createAnimTableEntry(fallFreeOffset, fallLen));
   }
 
   selectJumpRandomly() {
@@ -143,24 +200,41 @@ class zzplayas implements IPlugin {
   postinit(): void { }
 
   onTick(): void { 
-    if(this.core.helper.isPaused() || this.core.helper.isTitleScreen()) {
+    if(this.core.helper.isPaused()) {
+      this.wasPaused = true;
       return;
     }
 
+    // restore the animation if the game was paused in the middle of a jump
+    if(this.wasPaused) {
+      this.applyJumpSwap(this.currentJump);
+      this.applyLandingSwap(this.currentJump);
+      this.wasPaused = false;
+    }
+
     switch (this.core.link.get_anim_id()) {
-      /* Don't update the jumping and landing animations while they're playing */
+
       case GAMEPLAY_KEEP_OFFSETS.ANIM_JUMP:
+        /* Apply the correct landing animation to whatever jump is currently happening */
+        if(!this.jumpInProgress) {
+          this.applyLandingSwap(this.currentJump);
+          this.jumpInProgress = true;
+        }
+        break;
+
+      /* Don't update the jumping and landing animations while they're playing */
       case GAMEPLAY_KEEP_OFFSETS.ANIM_LAND:
       case GAMEPLAY_KEEP_OFFSETS.ANIM_LAND_OTHER1:
       case GAMEPLAY_KEEP_OFFSETS.ANIM_LAND_OTHER2:
+      case GAMEPLAY_KEEP_OFFSETS.ANIM_FALL_LAND:
+      case GAMEPLAY_KEEP_OFFSETS.ANIM_FALL_LAND_UNARMED:
         break;
     
       default:
-        /* use regular jump if player is holding something */
-        if(this.core.link.state === LinkState.HOLDING_ACTOR || this.core.link.state === LinkState.UNKNOWN) {
-          this.applyJumpSwap(LINK_ANIMETION_OFFSETS.JUMP_REGULAR);
-        }
-        else this.applyJumpSwap(this.selectJumpRandomly());
+        this.applyJumpSwap(this.selectJumpRandomly());
+        /* fix landing for backflips, ledge drops, etc when MM Jump not in progress */
+        this.applyLandingSwap(LINK_ANIMETION_OFFSETS.JUMP_REGULAR);
+        this.jumpInProgress = false;
         break;
     }
   }
