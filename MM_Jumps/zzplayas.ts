@@ -1,8 +1,7 @@
-import { IPlugin, IModLoaderAPI, ModLoaderEvents } from 'modloader64_api/IModLoaderAPI';
+import { IPlugin, IModLoaderAPI } from 'modloader64_api/IModLoaderAPI';
 import { bus } from 'modloader64_api/EventHandler';
 import { OotOnlineEvents } from './OotoAPI/OotoAPI';
-// import { EventHandler } from 'modloader64_api/EventHandler';
-import { IOOTCore, LinkState, LinkState2 } from 'modloader64_api/OOT/OOTAPI';
+import { IOOTCore, OotEvents } from 'modloader64_api/OOT/OOTAPI';
 import { InjectCore } from 'modloader64_api/CoreInjection';
 // import { Z64RomTools } from 'Z64Lib/API/Z64RomTools'
 // import { Z64LibEvents } from 'Z64Lib/API/Z64LibEvents';
@@ -88,6 +87,7 @@ class zzplayas implements IPlugin {
   jumpInProgress = false;
   wasPaused = false;
   currentJump!: number;
+  currentLanding!: number
 
   applyJumpSwap(animOffset: number) {
     let jumpLen;
@@ -158,6 +158,7 @@ class zzplayas implements IPlugin {
     this.ModLoader.emulator.rdramWritePtrBuffer(GAMEPLAY_KEEP_PTR, GAMEPLAY_KEEP_OFFSETS.ANIM_FALL_LAND_UNARMED, createAnimTableEntry(fallFreeOffset, fallLen));
     this.ModLoader.emulator.rdramWritePtrBuffer(GAMEPLAY_KEEP_PTR, GAMEPLAY_KEEP_OFFSETS.ANIM_LAND_SHORT, createAnimTableEntry(landShortOffset, landShortLen));
     this.ModLoader.emulator.rdramWritePtrBuffer(GAMEPLAY_KEEP_PTR, GAMEPLAY_KEEP_OFFSETS.ANIM_LAND_SHORT_UNARMED, createAnimTableEntry(landShortUnarmedOffset, landShortUnarmedLen));
+    this.currentLanding = landOffset;
   }
 
   selectJumpRandomly() {
@@ -209,6 +210,10 @@ class zzplayas implements IPlugin {
     this.somersaultWeight = config.somersault_jump_weight;
 
     bus.emit(OotOnlineEvents.CUSTOM_MODEL_APPLIED_ANIMATIONS, path.resolve(path.join(__dirname, zz.anim_file)));
+
+    /* Offset is vanilla before swapping any animations */
+    this.currentJump = LINK_ANIMETION_OFFSETS.JUMP_REGULAR;
+    this.currentJump = LINK_ANIMETION_OFFSETS.LAND_REGULAR;
   }
   postinit(): void { }
 
@@ -245,14 +250,16 @@ class zzplayas implements IPlugin {
         break;
     
       default:
-        if(this.jumpInProgress) {
-          /* Choose next jump */
-          this.applyJumpSwap(this.selectJumpRandomly());
-          
+        /* Choose next jump */
+        this.applyJumpSwap(this.selectJumpRandomly());
+
+        if(this.currentLanding !== LINK_ANIMETION_OFFSETS.LAND_REGULAR) {
           /* fix landing for backflips, ledge drops, etc when MM Jump not in progress */
           this.applyLandingSwap(LINK_ANIMETION_OFFSETS.JUMP_REGULAR);
-          this.jumpInProgress = false;
         }
+
+        this.jumpInProgress = false;
+
         break;
     }
   }
