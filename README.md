@@ -9,8 +9,7 @@ https://github.com/Neirn/MM_Jumps/releases
 
 # Installation
 1. Grab the latest release from the download link above
-2. Extract MM_Jumps.pak from MM_Jumps.zip
-3. Place the pak in your mods folder
+2. Place the pak in your mods folder
 
 
 # Known issues
