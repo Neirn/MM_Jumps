@@ -14,4 +14,4 @@ https://github.com/Neirn/MM_Jumps/releases
 
 
 # Known issues
-Currently incompatible with player models that contain custom animations.
+Not compatible with development versions of ML64
