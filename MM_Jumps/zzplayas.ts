@@ -1,20 +1,16 @@
-import { IPlugin, IModLoaderAPI } from 'modloader64_api/IModLoaderAPI';
-import { bus } from 'modloader64_api/EventHandler';
-import { OotOnlineEvents } from './OotoAPI/OotoAPI';
+import { IPlugin, IModLoaderAPI, ModLoaderEvents } from 'modloader64_api/IModLoaderAPI';
+import { EventHandler } from 'modloader64_api/EventHandler';
 import { IOOTCore, OotEvents } from 'modloader64_api/OOT/OOTAPI';
 import { InjectCore } from 'modloader64_api/CoreInjection';
-// import { Z64RomTools } from 'Z64Lib/API/Z64RomTools'
-// import { Z64LibEvents } from 'Z64Lib/API/Z64LibEvents';
-import fse from 'fs-extra';
+import { Z64RomTools } from 'Z64Lib/API/Z64RomTools'
+import { readJSONSync } from 'fs-extra';
+import fs from 'fs';
 import path from 'path';
 
 class zzdata {
   config_version!: string;
   config_file!: string;
-  flip_jump_data!: string
-  somersault_jump_data!: string
-  somersault_land_data!: string
-  anim_file!: string
+  anim_file!: string;
 }
 
 interface mm_jumps_options {
@@ -74,6 +70,14 @@ function createAnimTableEntry(offset: number, frameCount: number) {
   let frameCount1 = frameCount >> 16 & 0xFF;
   let frameCount2 = frameCount & 0xFF;
   return Buffer.from([frameCount1, frameCount2, 0, 0, 7, bankOffset1, bankOffset2, bankOffset3]);
+}
+
+function copyAnimation(source: Buffer, target: Buffer, offset: number, frameCount: number): void {
+  let framesToDataMultiplier: number = 0x86;
+
+  let dataLen: number = frameCount * framesToDataMultiplier;
+
+  source.copy(target, offset, offset, offset + dataLen);
 }
 
 class zzplayas implements IPlugin {
@@ -176,29 +180,18 @@ class zzplayas implements IPlugin {
   }
 
   createConfig(defaultWeight: number, rollWeight: number, somerWeight: number, configVersion: string, path: string) {
-    fse.writeFileSync(path, JSON.stringify({config_version: configVersion, default_jump_weight: defaultWeight, rolling_jump_weight: rollWeight, somersault_jump_weight: somerWeight} as mm_jumps_options, null, 4));
+    fs.writeFileSync(path, JSON.stringify({config_version: configVersion, default_jump_weight: defaultWeight, rolling_jump_weight: rollWeight, somersault_jump_weight: somerWeight} as mm_jumps_options, null, 4));
   }
-
-  /*
-  loadAnim(evt: any, file: string, animetionOffset: number) {
-    let tools: Z64RomTools = new Z64RomTools(this.ModLoader, 0x7430);
-    let anims: Buffer = tools.decompressFileFromRom(evt, 7);
-    let data: Buffer = fse.readFileSync(file);
-    data.copy(anims, animetionOffset)
-    tools.recompressFileIntoRom(evt, 7, anims);
-  }
-  */
-
 
   preinit(): void { }
 
   init(): void {
     let zz: zzdata = (this as any)['metadata']['zzplayas'];
 
-    if (!fse.existsSync(zz.config_file)) {
+    if (!fs.existsSync(zz.config_file)) {
       this.createConfig(70, 15, 15, zz.config_version, zz.config_file);
     }
-    let config: mm_jumps_options = fse.readJSONSync(zz.config_file);
+    let config: mm_jumps_options = readJSONSync(zz.config_file);
 
     /* Import settings when updating config file */
     if (config.config_version !== zz.config_version) {
@@ -209,11 +202,9 @@ class zzplayas implements IPlugin {
     this.flipWeight = config.rolling_jump_weight;
     this.somersaultWeight = config.somersault_jump_weight;
 
-    bus.emit(OotOnlineEvents.CUSTOM_MODEL_APPLIED_ANIMATIONS, path.resolve(path.join(__dirname, zz.anim_file)));
-
     /* Offset is vanilla before swapping any animations */
     this.currentJump = LINK_ANIMETION_OFFSETS.JUMP_REGULAR;
-    this.currentJump = LINK_ANIMETION_OFFSETS.LAND_REGULAR;
+    this.currentLanding = LINK_ANIMETION_OFFSETS.LAND_REGULAR;
   }
   postinit(): void { }
 
@@ -262,6 +253,31 @@ class zzplayas implements IPlugin {
 
         break;
     }
+  }
+
+  @EventHandler(ModLoaderEvents.ON_ROM_PATCHED_POST)
+  onRomPatchedPost(evt: any) {
+    this.ModLoader.logger.info("Loading Majora's Mask Jump animations...");
+
+    let zz: zzdata = (this as any)['metadata']['zzplayas'];
+
+    let dmadata: number = 0x7430;
+    let linkAnimdma: number = 0x7;
+    let tools: Z64RomTools = new Z64RomTools(this.ModLoader, dmadata);
+    let animationData: Buffer = tools.decompressFileFromRom(evt.rom, linkAnimdma);
+
+    this.ModLoader.logger.info("Attempting to load animations...");
+    let customAnims: Buffer = fs.readFileSync(path.resolve(path.join(__dirname, zz.anim_file)));
+
+    this.ModLoader.logger.info("Attempting to copy animations...");
+    copyAnimation(customAnims, animationData, LINK_ANIMETION_OFFSETS.JUMP_FLIP, ANIM_LENGTHS.JUMP_FLIP);
+    copyAnimation(customAnims, animationData, LINK_ANIMETION_OFFSETS.LAND_FLIP, ANIM_LENGTHS.LAND_FLIP);
+    copyAnimation(customAnims, animationData, LINK_ANIMETION_OFFSETS.JUMP_SOMERSAULT, ANIM_LENGTHS.JUMP_SOMERSAULT);
+    copyAnimation(customAnims, animationData, LINK_ANIMETION_OFFSETS.LAND_SOMERSAULT, ANIM_LENGTHS.LAND_SOMERSAULT);
+
+    this.ModLoader.logger.info("Attempting to reinject animations into ROM...");
+    tools.recompressFileIntoRom(evt.rom, linkAnimdma, animationData);
+    this.ModLoader.logger.info("Majora's Mask jump animations loaded!");
   }
 }
 

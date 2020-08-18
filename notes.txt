@@ -1,0 +1,67 @@
+VANILLA ANIMS:
+
+boy/anim/clink_demo_DDbox_open.anb
+00 33 00 00 07 00 D7 10
+Length: 0x33 * 0x86 = 0x1AB2
+Offset: 0xD710
+
+boy/anim/link_demo_DDbox_open.anb
+00 33 00 00 07 0A 1E 80
+Length: 0x33 * 0x86 = 0x1AB2
+Offset: 0x0A1E80
+
+boy/anim/link_normal_run_jump.anb
+00 0D 00 00 07 1B 4B 00
+Length: 0x0D * 0x86 = 0x6CE
+Offset: 0x1B4B00
+
+boy/anim/link_normal_run_jump_end.anb
+00 10 00 00 07 1B 72 E0
+Length: 0x10 * 0x86 = 0x860
+Offset: 0x1B72E0
+
+boy/anim/link_normal_landing.anb
+00 15 00 00 07 19 D3 E0
+Length: 0x15
+Offset: 0x19D3E0
+
+boy/anim/link_normal_landing_free.anb
+00 15 00 00 07 19 DE E0
+Length: 0x15
+Offset: 0x19DEE0
+
+boy/anim/link_normal_short_landing.anb
+00 10 00 00 07 1B 72 E0
+Length: 0x10
+Offset: 0x1B72E0
+
+boy/anim/link_normal_short_landing_free.anb
+00 10 00 00 07 1B 7B 40
+Length: 0x10
+Offset: 0x1B7B40
+
+PORTED ANIMS:
+
+jump front flip
+00 0D 00 00 07 23 34 D0
+Length: 0x0D * 0x86 = 0x6CE
+Offset: 0x2334D0
+New offset: 0xD710
+
+jump somersault
+00 0E 00 00 07 2E D3 50
+Length: 0x0E * 0x86 = 0x754
+Offset: 0x2ED350
+New offset: 0xDDDE
+
+land front flip
+00 0D 00 00 07 13 FD 50
+Length: 0x0D * 0x86 = 0x6CE
+Offset: 0x13FD50
+New offset: 0x0A1E80
+
+land somersault
+00 10 00 00 07 09 72 60
+Length: 0x10 * 0x86 = 0x860
+Offset: 0x97260
+New offset: 0x0A254E
