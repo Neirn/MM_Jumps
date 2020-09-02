@@ -284,6 +284,7 @@ class main implements IPlugin {
           }
       } catch (error) {
         this.ModLoader.logger.error("Error occured while reading animations!");
+        this.ModLoader.logger.error(error);
       }
     }
   }

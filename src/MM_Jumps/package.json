@@ -7,7 +7,7 @@
   "author": "Neirn",
   "license": "ISC",
   "core": "OcarinaofTime",
-  "zzplayas": {
+  "configData": {
     "config_version": "1.0.0",
     "config_file": "./mm_jumps_config.json",
     "anim_file": "link_animetion.zdata"
