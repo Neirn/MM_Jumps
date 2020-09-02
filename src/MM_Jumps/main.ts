@@ -265,19 +265,26 @@ class main implements IPlugin {
       let linkAnimdma: number = 0x7;
       let tools: Z64RomTools = new Z64RomTools(this.ModLoader, Z64LibSupportedGames.OCARINA_OF_TIME);
       let animationData: Buffer = tools.decompressDMAFileFromRom(evt.rom, linkAnimdma);
-  
-      this.ModLoader.logger.info("Attempting to load animations...");
-      let customAnims: Buffer = fs.readFileSync(path.resolve(path.join(__dirname, zz.anim_file)));
-  
-      this.ModLoader.logger.info("Attempting to copy animations...");
-      copyAnimation(customAnims, animationData, LINK_ANIMETION_OFFSETS.JUMP_FLIP, ANIM_LENGTHS.JUMP_FLIP);
-      copyAnimation(customAnims, animationData, LINK_ANIMETION_OFFSETS.LAND_FLIP, ANIM_LENGTHS.LAND_FLIP);
-      copyAnimation(customAnims, animationData, LINK_ANIMETION_OFFSETS.JUMP_SOMERSAULT, ANIM_LENGTHS.JUMP_SOMERSAULT);
-      copyAnimation(customAnims, animationData, LINK_ANIMETION_OFFSETS.LAND_SOMERSAULT, ANIM_LENGTHS.LAND_SOMERSAULT);
-  
-      this.ModLoader.logger.info("Attempting to reinject animations into ROM...");
-      tools.recompressDMAFileIntoRom(evt.rom, linkAnimdma, animationData);
-      this.ModLoader.logger.info("Majora's Mask jump animations loaded!");
+
+      try {
+        let customAnims: Buffer = fs.readFileSync(path.resolve(path.join(__dirname, zz.anim_file)));
+        try {
+            copyAnimation(customAnims, animationData, LINK_ANIMETION_OFFSETS.JUMP_FLIP, ANIM_LENGTHS.JUMP_FLIP);
+            copyAnimation(customAnims, animationData, LINK_ANIMETION_OFFSETS.LAND_FLIP, ANIM_LENGTHS.LAND_FLIP);
+            copyAnimation(customAnims, animationData, LINK_ANIMETION_OFFSETS.JUMP_SOMERSAULT, ANIM_LENGTHS.JUMP_SOMERSAULT);
+            copyAnimation(customAnims, animationData, LINK_ANIMETION_OFFSETS.LAND_SOMERSAULT, ANIM_LENGTHS.LAND_SOMERSAULT);
+            try {
+                tools.recompressDMAFileIntoRom(evt.rom, linkAnimdma, animationData);
+                this.ModLoader.logger.info("Majora's Mask jump animations loaded!");
+            } catch (error) {
+                this.ModLoader.logger.error("Error ocurred while reinjecting animations!")
+            }
+          } catch (error) {
+            this.ModLoader.logger.error("Error occured while copying animations")
+          }
+      } catch (error) {
+        this.ModLoader.logger.error("Error occured while reading animations!");
+      }
     }
   }
 
