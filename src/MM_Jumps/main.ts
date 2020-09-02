@@ -187,7 +187,7 @@ class main implements IPlugin {
     preinit(): void { }
   
     init(): void {
-      let zz: zzdata = (this as any)['metadata']['zzplayas'];
+      let zz: zzdata = (this as any)['metadata']['configData'];
   
       if (!fs.existsSync(zz.config_file)) {
         this.createConfig(70, 15, 15, zz.config_version, zz.config_file);
