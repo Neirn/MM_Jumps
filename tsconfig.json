@@ -1,0 +1,41 @@
+{
+  "rootDir": "./",
+  "outDir": "build",
+  "compilerOptions": {
+    "rootDir": "./",
+    "target": "ESNEXT",
+    "module": "commonjs",
+    "sourceMap": true,
+    "outDir": "./build",
+    "strict": true,
+    "esModuleInterop": true,
+    "experimentalDecorators": true,
+    "moduleResolution": "node",
+    "baseUrl": "./",
+    "paths": {
+      "@sound/*": [
+        "./build/emulator/*"
+      ],
+      "@MM_Jumps/*": [
+        "./src/MM_Jumps/*"
+      ],
+      "Z64Lib/*": [
+        "libs/Z64Lib/*"
+      ]
+    }
+  },
+  "include": [
+    "src/**/*.ts",
+    "test/**/*.ts",
+    "mods/**/*.ts",
+    "cores/**/*.ts",
+    "bin/paker.ts",
+    "tools/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "API",
+    "build.ts",
+    "build"
+  ]
+}
