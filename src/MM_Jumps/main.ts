@@ -188,25 +188,39 @@ class main implements IPlugin {
   
     init(): void {
       let zz: zzdata = (this as any)['metadata']['configData'];
+
+      /* Default chances of each jump */
+      let defaultDefault: number = 34;
+      let flipDefault: number = 33;
+      let somersaultDefault: number = 33;
   
       if (!fs.existsSync(zz.config_file)) {
-        this.createConfig(70, 15, 15, zz.config_version, zz.config_file);
+        this.createConfig(defaultDefault, flipDefault, somersaultDefault, zz.config_version, zz.config_file);
       }
-      let config: mm_jumps_options = readJSONSync(zz.config_file);
+      try {
+        let config: mm_jumps_options = readJSONSync(zz.config_file);
+        /* Import settings when updating config file */
+        if (config.config_version !== zz.config_version) {
+          this.createConfig(config.default_jump_weight, config.rolling_jump_weight, config.somersault_jump_weight, zz.config_version, zz.config_file);
+        }
   
-      /* Import settings when updating config file */
-      if (config.config_version !== zz.config_version) {
-        this.createConfig(config.default_jump_weight, config.rolling_jump_weight, config.somersault_jump_weight, zz.config_version, zz.config_file);
+        this.defaultWeight = config.default_jump_weight;
+        this.flipWeight = config.rolling_jump_weight;
+        this.somersaultWeight = config.somersault_jump_weight;
+      } catch (error) {
+        this.ModLoader.logger.error("Error reading config file! Loading default values...")
+        this.defaultWeight = defaultDefault;
+        this.flipWeight = flipDefault;
+        this.somersaultWeight = somersaultDefault;
       }
   
-      this.defaultWeight = config.default_jump_weight;
-      this.flipWeight = config.rolling_jump_weight;
-      this.somersaultWeight = config.somersault_jump_weight;
+      
   
       /* Offset is vanilla before swapping any animations */
       this.currentJump = LINK_ANIMETION_OFFSETS.JUMP_REGULAR;
       this.currentLanding = LINK_ANIMETION_OFFSETS.LAND_REGULAR;
     }
+    
     postinit(): void { }
   
     onTick(): void { 
