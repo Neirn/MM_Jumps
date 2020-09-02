@@ -6,5 +6,13 @@
   "keywords": [],
   "author": "Neirn",
   "license": "ISC",
-  "core": "OcarinaofTime"
+  "core": "OcarinaofTime",
+  "zzplayas": {
+    "config_version": "1.0.0",
+    "config_file": "./mm_jumps_config.json",
+    "anim_file": "link_animetion.zdata"
+  },
+  "modloader64_deps": {
+    "Z64Lib": "https://github.com/hylian-modding/ML64-Z64Lib.git"
+  }
 }

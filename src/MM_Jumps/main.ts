@@ -260,7 +260,7 @@ class main implements IPlugin {
     onRomPatchedPost(evt: any) {
       this.ModLoader.logger.info("Loading Majora's Mask Jump animations...");
   
-      let zz: zzdata = (this as any)['metadata']['zzplayas'];
+      let zz: zzdata = (this as any)['metadata']['configData'];
   
       let linkAnimdma: number = 0x7;
       let tools: Z64RomTools = new Z64RomTools(this.ModLoader, Z64LibSupportedGames.OCARINA_OF_TIME);
