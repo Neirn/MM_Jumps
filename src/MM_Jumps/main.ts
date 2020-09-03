@@ -5,13 +5,16 @@ import {InjectCore} from 'modloader64_api/CoreInjection';
 import {Z64RomTools} from 'Z64Lib/API/Z64RomTools';
 import {Z64LibSupportedGames} from 'Z64Lib/API/Z64LibSupportedGames';
 import { readJSONSync } from 'fs-extra';
-import fs from 'fs';
+import fs, { fchownSync } from 'fs';
 import path from 'path';
 
 class zzdata {
   config_version!: string;
   config_file!: string;
-  anim_file!: string;
+  jump_flip_anim!: string;
+  land_flip_anim!: string;
+  jump_somersault_anim!: string;
+  land_somersault_anim!: string;
 }
 
 interface mm_jumps_options {
@@ -60,25 +63,17 @@ const enum ANIM_LENGTHS {
   LAND_DEFAULT_SHORT_UNARMED = 0x10
 }
 
-function getRandomInt(max: number) {
+function getRandomInt(max: number): number {
   return Math.floor(Math.random() * Math.floor(max));
 }
 
-function createAnimTableEntry(offset: number, frameCount: number) {
+function createAnimTableEntry(offset: number, frameCount: number): Buffer {
   let bankOffset1 = (offset >> 16) & 0xFF;
   let bankOffset2 = (offset >> 8) & 0xFF;
   let bankOffset3 = offset & 0xFF;
   let frameCount1 = frameCount >> 16 & 0xFF;
   let frameCount2 = frameCount & 0xFF;
   return Buffer.from([frameCount1, frameCount2, 0, 0, 7, bankOffset1, bankOffset2, bankOffset3]);
-}
-
-function copyAnimation(source: Buffer, target: Buffer, offset: number, frameCount: number): void {
-  let framesToDataMultiplier: number = 0x86;
-
-  let dataLen: number = frameCount * framesToDataMultiplier;
-
-  source.copy(target, offset, offset, offset + dataLen);
 }
 
 class main implements IPlugin {
@@ -220,7 +215,7 @@ class main implements IPlugin {
       this.currentJump = LINK_ANIMETION_OFFSETS.JUMP_REGULAR;
       this.currentLanding = LINK_ANIMETION_OFFSETS.LAND_REGULAR;
     }
-    
+
     postinit(): void { }
   
     onTick(): void { 
@@ -281,24 +276,14 @@ class main implements IPlugin {
       let animationData: Buffer = tools.decompressDMAFileFromRom(evt.rom, linkAnimdma);
 
       try {
-        let customAnims: Buffer = fs.readFileSync(path.resolve(path.join(__dirname, zz.anim_file)));
-        try {
-            copyAnimation(customAnims, animationData, LINK_ANIMETION_OFFSETS.JUMP_FLIP, ANIM_LENGTHS.JUMP_FLIP);
-            copyAnimation(customAnims, animationData, LINK_ANIMETION_OFFSETS.LAND_FLIP, ANIM_LENGTHS.LAND_FLIP);
-            copyAnimation(customAnims, animationData, LINK_ANIMETION_OFFSETS.JUMP_SOMERSAULT, ANIM_LENGTHS.JUMP_SOMERSAULT);
-            copyAnimation(customAnims, animationData, LINK_ANIMETION_OFFSETS.LAND_SOMERSAULT, ANIM_LENGTHS.LAND_SOMERSAULT);
-            try {
-                tools.recompressDMAFileIntoRom(evt.rom, linkAnimdma, animationData);
-                this.ModLoader.logger.info("Majora's Mask jump animations loaded!");
-            } catch (error) {
-                this.ModLoader.logger.error("Error ocurred while reinjecting animations!")
-            }
-          } catch (error) {
-            this.ModLoader.logger.error("Error occured while copying animations")
-          }
+        fs.readFileSync(path.resolve(path.join(__dirname, zz.jump_flip_anim))).copy(animationData, LINK_ANIMETION_OFFSETS.JUMP_FLIP);
+        fs.readFileSync(path.resolve(path.join(__dirname, zz.land_flip_anim))).copy(animationData, LINK_ANIMETION_OFFSETS.LAND_FLIP);
+        fs.readFileSync(path.resolve(path.join(__dirname, zz.jump_somersault_anim))).copy(animationData, LINK_ANIMETION_OFFSETS.JUMP_SOMERSAULT);
+        fs.readFileSync(path.resolve(path.join(__dirname, zz.land_somersault_anim))).copy(animationData, LINK_ANIMETION_OFFSETS.LAND_SOMERSAULT);
+        tools.recompressDMAFileIntoRom(evt.rom, linkAnimdma, animationData);
+        this.ModLoader.logger.info("Majora's Mask jump animations loaded!");
       } catch (error) {
-        this.ModLoader.logger.error("Error occured while reading animations!");
-        this.ModLoader.logger.error(error);
+        this.ModLoader.logger.error("Error loading Majora's Mask jump animations!")
       }
     }
   }
