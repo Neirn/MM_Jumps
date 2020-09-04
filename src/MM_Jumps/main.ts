@@ -7,7 +7,6 @@ import {Z64LibSupportedGames} from 'Z64Lib/API/Z64LibSupportedGames';
 import { readJSONSync } from 'fs-extra';
 import fs from 'fs';
 import path from 'path';
-import { threadId } from 'worker_threads';
 
 class zzdata {
   config_version!: string;
@@ -215,8 +214,6 @@ class main implements IPlugin {
       this.flipWeight = flipDefault;
       this.somersaultWeight = somersaultDefault;
     }
-
-    
 
     /* Offset is vanilla before swapping any animations */
     this.currentJump = LINK_ANIMETION_OFFSETS.JUMP_REGULAR;
