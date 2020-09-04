@@ -4,7 +4,8 @@ import {IOOTCore} from 'modloader64_api/OOT/OOTAPI';
 import {InjectCore} from 'modloader64_api/CoreInjection';
 import {Z64RomTools} from 'Z64Lib/API/Z64RomTools';
 import {Z64LibSupportedGames} from 'Z64Lib/API/Z64LibSupportedGames';
-import { readJSONSync } from 'fs-extra';
+import {onViUpdate} from 'modloader64_api/PluginLifecycle';
+import {readJSONSync} from 'fs-extra';
 import fs from 'fs';
 import path from 'path';
 
@@ -81,9 +82,9 @@ class main implements IPlugin {
   pluginName?: string | undefined;
   @InjectCore()
   core!: IOOTCore;
-  defaultWeight!: number;
-  flipWeight!: number;
-  somersaultWeight!: number;
+  defaultWeight: number[] = [0];
+  flipWeight: number[] = [0];
+  somersaultWeight: number[] = [0];
   jumpInProgress: boolean = false;
   wasPaused: boolean = false;
   currentJump!: number;
@@ -163,17 +164,17 @@ class main implements IPlugin {
   }
 
   selectJumpRandomly(): number {
-    let total: number = this.flipWeight + this.defaultWeight + this.somersaultWeight;
+    let total: number = this.flipWeight[0] + this.defaultWeight[0] + this.somersaultWeight[0];
 
-    let rng: number = getRandomInt(total) + 1;
+    let rng: number = getRandomInt(total);
 
-    if(rng < this.defaultWeight) {
-      return LINK_ANIMETION_OFFSETS.JUMP_REGULAR;
+    if(rng < this.somersaultWeight[0]) {
+      return LINK_ANIMETION_OFFSETS.JUMP_SOMERSAULT;
     }
-    else if (rng < this.defaultWeight + this.flipWeight) {
+    else if (rng < this.somersaultWeight[0] + this.flipWeight[0]) {
       return LINK_ANIMETION_OFFSETS.JUMP_FLIP;
     }
-    else return LINK_ANIMETION_OFFSETS.JUMP_SOMERSAULT;
+    else return LINK_ANIMETION_OFFSETS.JUMP_REGULAR;
   }
 
   createConfig(defaultWeight: number, rollWeight: number, somerWeight: number, configVersion: string, path: string): void {
@@ -205,14 +206,14 @@ class main implements IPlugin {
         this.createConfig(config.default_jump_weight, config.rolling_jump_weight, config.somersault_jump_weight, zz.config_version, zz.config_file);
       }
 
-      this.defaultWeight = config.default_jump_weight;
-      this.flipWeight = config.rolling_jump_weight;
-      this.somersaultWeight = config.somersault_jump_weight;
+      this.defaultWeight[0] = config.default_jump_weight;
+      this.flipWeight[0] = config.rolling_jump_weight;
+      this.somersaultWeight[0] = config.somersault_jump_weight;
     } catch (error) {
       this.ModLoader.logger.warn("Error reading config file! Loading default values...")
-      this.defaultWeight = defaultDefault;
-      this.flipWeight = flipDefault;
-      this.somersaultWeight = somersaultDefault;
+      this.defaultWeight[0] = defaultDefault;
+      this.flipWeight[0] = flipDefault;
+      this.somersaultWeight[0] = somersaultDefault;
     }
 
     /* Offset is vanilla before swapping any animations */
@@ -320,6 +321,41 @@ class main implements IPlugin {
     } catch (error) {
       this.ModLoader.logger.error("Error loading metadata from package.json!");
       this.ModLoader.logger.error(error.message);
+    }
+  }
+
+  /* menu bar stuff */
+  @onViUpdate()
+  onViUpdate() {
+    if(this.ModLoader.ImGui.beginMainMenuBar()) {
+      if(this.ModLoader.ImGui.beginMenu("Mods")) {
+        if(this.ModLoader.ImGui.beginMenu("MM Jumps")) {
+          if(this.ModLoader.ImGui.beginMenu("Default Frequency:")) {
+            this.ModLoader.ImGui.sliderInt("##default", this.defaultWeight, 0, 100);
+            this.ModLoader.ImGui.endMenu();
+          }
+          if(this.ModLoader.ImGui.beginMenu("Front Flip Frequency:")) {
+            this.ModLoader.ImGui.sliderInt("##front_flip", this.flipWeight, 0, 100);
+            this.ModLoader.ImGui.endMenu();
+          }
+          if(this.ModLoader.ImGui.beginMenu("Somersault Frequency:")) {
+            this.ModLoader.ImGui.sliderInt("##somersault", this.somersaultWeight, 0, 100);
+            this.ModLoader.ImGui.endMenu();
+          }
+          if(this.ModLoader.ImGui.menuItem("Save")) {
+            try {
+              let zz: zzdata = (this as any)['metadata']['configData'];
+              this.createConfig(this.defaultWeight[0], this.flipWeight[0], this.somersaultWeight[0], zz.config_version, zz.config_file);
+            } catch (error) {
+              this.ModLoader.logger.error("There was an error saving the changes to the config file!")
+              this.ModLoader.logger.error(error.message);
+            }
+          }
+          this.ModLoader.ImGui.endMenu();
+        }
+        this.ModLoader.ImGui.endMenu();
+      }
+      this.ModLoader.ImGui.endMainMenuBar();
     }
   }
 }
