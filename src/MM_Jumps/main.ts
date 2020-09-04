@@ -5,7 +5,7 @@ import {InjectCore} from 'modloader64_api/CoreInjection';
 import {Z64RomTools} from 'Z64Lib/API/Z64RomTools';
 import {Z64LibSupportedGames} from 'Z64Lib/API/Z64LibSupportedGames';
 import { readJSONSync } from 'fs-extra';
-import fs, { fchownSync } from 'fs';
+import fs from 'fs';
 import path from 'path';
 
 class zzdata {
