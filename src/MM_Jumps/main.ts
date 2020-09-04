@@ -64,6 +64,11 @@ const enum ANIM_LENGTHS {
   LAND_DEFAULT_SHORT_UNARMED = 0x10
 }
 
+const enum SLIDER_RANGE {
+  MAX = 100,
+  MIN = 0
+}
+
 function getRandomInt(max: number): number {
   return Math.floor(Math.random() * Math.floor(max));
 }
@@ -330,18 +335,9 @@ class main implements IPlugin {
     if(this.ModLoader.ImGui.beginMainMenuBar()) {
       if(this.ModLoader.ImGui.beginMenu("Mods")) {
         if(this.ModLoader.ImGui.beginMenu("MM Jumps")) {
-          if(this.ModLoader.ImGui.beginMenu("Default Frequency:")) {
-            this.ModLoader.ImGui.sliderInt("##mmjumps_default", this.defaultWeight, 0, 100);
-            this.ModLoader.ImGui.endMenu();
-          }
-          if(this.ModLoader.ImGui.beginMenu("Front Flip Frequency:")) {
-            this.ModLoader.ImGui.sliderInt("##mmjumps_front_flip", this.flipWeight, 0, 100);
-            this.ModLoader.ImGui.endMenu();
-          }
-          if(this.ModLoader.ImGui.beginMenu("Somersault Frequency:")) {
-            this.ModLoader.ImGui.sliderInt("##mmjumps_somersault", this.somersaultWeight, 0, 100);
-            this.ModLoader.ImGui.endMenu();
-          }
+          this.addSlider("Default Frequency", "##mmjumps_default_slider", this.defaultWeight);
+          this.addSlider("Front Flip Frequency", "#mmjumps_front_flip_slider", this.flipWeight);
+          this.addSlider("Somersault Frequency", "##mmjumps_somersault_slider", this.somersaultWeight);
           if(this.ModLoader.ImGui.menuItem("Save")) {
             try {
               let zz: zzdata = (this as any)['metadata']['configData'];
@@ -356,6 +352,13 @@ class main implements IPlugin {
         this.ModLoader.ImGui.endMenu();
       }
       this.ModLoader.ImGui.endMainMenuBar();
+    }
+  }
+
+  addSlider(menuItemName: string, sliderID: string, numberRef: number[]): void {
+    if(this.ModLoader.ImGui.menuItem(menuItemName)) {
+      this.ModLoader.ImGui.sliderInt(sliderID, numberRef, SLIDER_RANGE.MAX, SLIDER_RANGE.MIN);
+      this.ModLoader.ImGui.endMenu();
     }
   }
 }
