@@ -84,13 +84,13 @@ class main implements IPlugin {
     defaultWeight!: number;
     flipWeight!: number;
     somersaultWeight!: number;
-    jumpInProgress = false;
-    wasPaused = false;
+    jumpInProgress: boolean = false;
+    wasPaused: boolean = false;
     currentJump!: number;
     currentLanding!: number
   
     applyJumpSwap(animOffset: number) {
-      let jumpLen;
+      let jumpLen: number;
   
       switch (animOffset) {
         case LINK_ANIMETION_OFFSETS.JUMP_SOMERSAULT:
@@ -114,18 +114,18 @@ class main implements IPlugin {
   
     applyLandingSwap(jumpOffset: number) {
       /* Set up parameters for default landing animation */
-      let landLen = ANIM_LENGTHS.LAND_DEFAULT;
-      let fallLen = ANIM_LENGTHS.LAND_DEFAULT_FALL;
-      let landShortLen = ANIM_LENGTHS.LAND_DEFAULT_SHORT;
-      let landShortUnarmedLen = ANIM_LENGTHS.LAND_DEFAULT_SHORT_UNARMED;
-      let landOffset = LINK_ANIMETION_OFFSETS.LAND_REGULAR;
-      let fallOffset = LINK_ANIMETION_OFFSETS.FALL;
-      let fallFreeOffset = LINK_ANIMETION_OFFSETS.FALL_FREE;
-      let landShortOffset = LINK_ANIMETION_OFFSETS.LAND_SHORT;
-      let landShortUnarmedOffset = LINK_ANIMETION_OFFSETS.LAND_SHORT_UNARMED;
+      let landLen: number = ANIM_LENGTHS.LAND_DEFAULT;
+      let fallLen: number = ANIM_LENGTHS.LAND_DEFAULT_FALL;
+      let landShortLen: number = ANIM_LENGTHS.LAND_DEFAULT_SHORT;
+      let landShortUnarmedLen: number = ANIM_LENGTHS.LAND_DEFAULT_SHORT_UNARMED;
+      let landOffset: number = LINK_ANIMETION_OFFSETS.LAND_REGULAR;
+      let fallOffset: number = LINK_ANIMETION_OFFSETS.FALL;
+      let fallFreeOffset: number = LINK_ANIMETION_OFFSETS.FALL_FREE;
+      let landShortOffset: number = LINK_ANIMETION_OFFSETS.LAND_SHORT;
+      let landShortUnarmedOffset: number = LINK_ANIMETION_OFFSETS.LAND_SHORT_UNARMED;
   
       /* Only swap from default during MM jump */
-      let isMMJump = false;
+      let isMMJump: boolean = false;
       switch (jumpOffset) {
         case LINK_ANIMETION_OFFSETS.JUMP_SOMERSAULT:
           isMMJump = true;
@@ -161,10 +161,10 @@ class main implements IPlugin {
       this.currentLanding = landOffset;
     }
   
-    selectJumpRandomly() {
-      let total = this.flipWeight + this.defaultWeight + this.somersaultWeight;
+    selectJumpRandomly(): number {
+      let total: number = this.flipWeight + this.defaultWeight + this.somersaultWeight;
   
-      let rng = getRandomInt(total) + 1;
+      let rng: number = getRandomInt(total) + 1;
   
       if(rng < this.defaultWeight) {
         return LINK_ANIMETION_OFFSETS.JUMP_REGULAR;
@@ -175,7 +175,7 @@ class main implements IPlugin {
       else return LINK_ANIMETION_OFFSETS.JUMP_SOMERSAULT;
     }
   
-    createConfig(defaultWeight: number, rollWeight: number, somerWeight: number, configVersion: string, path: string) {
+    createConfig(defaultWeight: number, rollWeight: number, somerWeight: number, configVersion: string, path: string): void {
       fs.writeFileSync(path, JSON.stringify({config_version: configVersion, default_jump_weight: defaultWeight, rolling_jump_weight: rollWeight, somersault_jump_weight: somerWeight} as mm_jumps_options, null, 4));
     }
   
@@ -266,7 +266,7 @@ class main implements IPlugin {
     }
   
     @EventHandler(ModLoaderEvents.ON_ROM_PATCHED_POST)
-    onRomPatchedPost(evt: any) {
+    onRomPatchedPost(evt: any): void {
       this.ModLoader.logger.info("Loading Majora's Mask Jump animations...");
   
       let zz: zzdata = (this as any)['metadata']['configData'];
