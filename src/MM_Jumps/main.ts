@@ -331,15 +331,15 @@ class main implements IPlugin {
       if(this.ModLoader.ImGui.beginMenu("Mods")) {
         if(this.ModLoader.ImGui.beginMenu("MM Jumps")) {
           if(this.ModLoader.ImGui.beginMenu("Default Frequency:")) {
-            this.ModLoader.ImGui.sliderInt("##default", this.defaultWeight, 0, 100);
+            this.ModLoader.ImGui.sliderInt("##mmjumps_default", this.defaultWeight, 0, 100);
             this.ModLoader.ImGui.endMenu();
           }
           if(this.ModLoader.ImGui.beginMenu("Front Flip Frequency:")) {
-            this.ModLoader.ImGui.sliderInt("##front_flip", this.flipWeight, 0, 100);
+            this.ModLoader.ImGui.sliderInt("##mmjumps_front_flip", this.flipWeight, 0, 100);
             this.ModLoader.ImGui.endMenu();
           }
           if(this.ModLoader.ImGui.beginMenu("Somersault Frequency:")) {
-            this.ModLoader.ImGui.sliderInt("##somersault", this.somersaultWeight, 0, 100);
+            this.ModLoader.ImGui.sliderInt("##mmjumps_somersault", this.somersaultWeight, 0, 100);
             this.ModLoader.ImGui.endMenu();
           }
           if(this.ModLoader.ImGui.menuItem("Save")) {
