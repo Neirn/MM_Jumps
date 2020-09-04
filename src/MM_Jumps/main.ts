@@ -7,6 +7,7 @@ import {Z64LibSupportedGames} from 'Z64Lib/API/Z64LibSupportedGames';
 import { readJSONSync } from 'fs-extra';
 import fs from 'fs';
 import path from 'path';
+import { threadId } from 'worker_threads';
 
 class zzdata {
   config_version!: string;
@@ -88,6 +89,7 @@ class main implements IPlugin {
     wasPaused: boolean = false;
     currentJump!: number;
     currentLanding!: number
+    loadSuccess: boolean = false;
   
     applyJumpSwap(animOffset: number) {
       let jumpLen: number;
@@ -190,7 +192,12 @@ class main implements IPlugin {
       let somersaultDefault: number = 33;
   
       if (!fs.existsSync(zz.config_file)) {
-        this.createConfig(defaultDefault, flipDefault, somersaultDefault, zz.config_version, zz.config_file);
+        try {
+          this.createConfig(defaultDefault, flipDefault, somersaultDefault, zz.config_version, zz.config_file);
+        } catch (error) {
+          this.ModLoader.logger.warn("Couldn't generate config file!");
+        }
+
       }
       try {
         let config: mm_jumps_options = readJSONSync(zz.config_file);
@@ -203,7 +210,7 @@ class main implements IPlugin {
         this.flipWeight = config.rolling_jump_weight;
         this.somersaultWeight = config.somersault_jump_weight;
       } catch (error) {
-        this.ModLoader.logger.error("Error reading config file! Loading default values...")
+        this.ModLoader.logger.warn("Error reading config file! Loading default values...")
         this.defaultWeight = defaultDefault;
         this.flipWeight = flipDefault;
         this.somersaultWeight = somersaultDefault;
@@ -219,72 +226,105 @@ class main implements IPlugin {
     postinit(): void { }
   
     onTick(): void { 
-      if(this.core.helper.isPaused()) {
-        this.wasPaused = true;
-        return;
-      }
-  
-      // restore the animation if the game was paused in the middle of a jump
-      if(this.wasPaused) {
-        this.applyJumpSwap(this.currentJump);
-        this.applyLandingSwap(this.currentJump);
-        this.wasPaused = false;
-      }
-  
-      switch (this.core.link.get_anim_id()) {
-  
-        case GAMEPLAY_KEEP_OFFSETS.ANIM_JUMP:
-          /* Apply the correct landing animation to whatever jump is currently happening */
-          if(!this.jumpInProgress) {
-            this.applyLandingSwap(this.currentJump);
-            this.jumpInProgress = true;
-          }
-          break;
-  
-        /* Don't update the jumping and landing animations while they're playing */
-        case GAMEPLAY_KEEP_OFFSETS.ANIM_LAND:
-        case GAMEPLAY_KEEP_OFFSETS.ANIM_LAND_SHORT:
-        case GAMEPLAY_KEEP_OFFSETS.ANIM_LAND_SHORT_UNARMED:
-        case GAMEPLAY_KEEP_OFFSETS.ANIM_FALL_LAND:
-        case GAMEPLAY_KEEP_OFFSETS.ANIM_FALL_LAND_UNARMED:
-        case GAMEPLAY_KEEP_OFFSETS.ANIM_NORMAL_LANDING_WAIT:
-          break;
-      
-        default:
-          /* Choose next jump */
-          this.applyJumpSwap(this.selectJumpRandomly());
-  
-          if(this.currentLanding !== LINK_ANIMETION_OFFSETS.LAND_REGULAR) {
-            /* fix landing for backflips, ledge drops, etc when MM Jump not in progress */
-            this.applyLandingSwap(LINK_ANIMETION_OFFSETS.JUMP_REGULAR);
-          }
-  
-          this.jumpInProgress = false;
-  
-          break;
+      if(this.loadSuccess) {
+        if(this.core.helper.isPaused()) {
+          this.wasPaused = true;
+          return;
+        }
+    
+        // restore the animation if the game was paused in the middle of a jump
+        if(this.wasPaused) {
+          this.applyJumpSwap(this.currentJump);
+          this.applyLandingSwap(this.currentJump);
+          this.wasPaused = false;
+        }
+    
+        switch (this.core.link.get_anim_id()) {
+    
+          case GAMEPLAY_KEEP_OFFSETS.ANIM_JUMP:
+            /* Apply the correct landing animation to whatever jump is currently happening */
+            if(!this.jumpInProgress) {
+              this.applyLandingSwap(this.currentJump);
+              this.jumpInProgress = true;
+            }
+            break;
+    
+          /* Don't update the jumping and landing animations while they're playing */
+          case GAMEPLAY_KEEP_OFFSETS.ANIM_LAND:
+          case GAMEPLAY_KEEP_OFFSETS.ANIM_LAND_SHORT:
+          case GAMEPLAY_KEEP_OFFSETS.ANIM_LAND_SHORT_UNARMED:
+          case GAMEPLAY_KEEP_OFFSETS.ANIM_FALL_LAND:
+          case GAMEPLAY_KEEP_OFFSETS.ANIM_FALL_LAND_UNARMED:
+          case GAMEPLAY_KEEP_OFFSETS.ANIM_NORMAL_LANDING_WAIT:
+            break;
+        
+          default:
+            /* Choose next jump */
+            this.applyJumpSwap(this.selectJumpRandomly());
+    
+            if(this.currentLanding !== LINK_ANIMETION_OFFSETS.LAND_REGULAR) {
+              /* fix landing for backflips, ledge drops, etc when MM Jump not in progress */
+              this.applyLandingSwap(LINK_ANIMETION_OFFSETS.JUMP_REGULAR);
+            }
+    
+            this.jumpInProgress = false;
+    
+            break;
+        }
       }
     }
   
     @EventHandler(ModLoaderEvents.ON_ROM_PATCHED_POST)
     onRomPatchedPost(evt: any): void {
-      this.ModLoader.logger.info("Loading Majora's Mask Jump animations...");
-  
-      let zz: zzdata = (this as any)['metadata']['configData'];
-  
       let linkAnimdma: number = 0x7;
-      let tools: Z64RomTools = new Z64RomTools(this.ModLoader, Z64LibSupportedGames.OCARINA_OF_TIME);
-      let animationData: Buffer = tools.decompressDMAFileFromRom(evt.rom, linkAnimdma);
+
+      this.ModLoader.logger.info("Loading Majora's Mask Jump animations...");
 
       try {
-        fs.readFileSync(path.resolve(path.join(__dirname, zz.jump_flip_anim))).copy(animationData, LINK_ANIMETION_OFFSETS.JUMP_FLIP);
-        fs.readFileSync(path.resolve(path.join(__dirname, zz.land_flip_anim))).copy(animationData, LINK_ANIMETION_OFFSETS.LAND_FLIP);
-        fs.readFileSync(path.resolve(path.join(__dirname, zz.jump_somersault_anim))).copy(animationData, LINK_ANIMETION_OFFSETS.JUMP_SOMERSAULT);
-        fs.readFileSync(path.resolve(path.join(__dirname, zz.land_somersault_anim))).copy(animationData, LINK_ANIMETION_OFFSETS.LAND_SOMERSAULT);
-        tools.recompressDMAFileIntoRom(evt.rom, linkAnimdma, animationData);
-        this.ModLoader.logger.info("Majora's Mask jump animations loaded!");
+        let zz: zzdata = (this as any)['metadata']['configData'];
+        try {
+          let tools: Z64RomTools = new Z64RomTools(this.ModLoader, Z64LibSupportedGames.OCARINA_OF_TIME);
+          try {
+            let animationData: Buffer = tools.decompressDMAFileFromRom(evt.rom, linkAnimdma);
+            try {
+              let jumpFlipBuff: Buffer = fs.readFileSync(path.resolve(path.join(__dirname, zz.jump_flip_anim)));
+              let landFlipBuff: Buffer = fs.readFileSync(path.resolve(path.join(__dirname, zz.land_flip_anim)));
+              let jumpSomerBuff: Buffer = fs.readFileSync(path.resolve(path.join(__dirname, zz.jump_somersault_anim)));
+              let landSomerBuff: Buffer = fs.readFileSync(path.resolve(path.join(__dirname, zz.land_somersault_anim)));
+              try {
+                jumpFlipBuff.copy(animationData, LINK_ANIMETION_OFFSETS.JUMP_FLIP);
+                landFlipBuff.copy(animationData, LINK_ANIMETION_OFFSETS.LAND_FLIP);
+                jumpSomerBuff.copy(animationData, LINK_ANIMETION_OFFSETS.JUMP_SOMERSAULT);
+                landSomerBuff.copy(animationData, LINK_ANIMETION_OFFSETS.LAND_SOMERSAULT);
+                try {
+                  tools.recompressDMAFileIntoRom(evt.rom, linkAnimdma, animationData);
+                  this.ModLoader.logger.info("Majora's Mask jump animations loaded!");
+                  this.loadSuccess = true;
+                } catch (error) {
+                  this.ModLoader.logger.error("Error re-injecting the animations to the ROM!");
+                  this.ModLoader.logger.error(error.message);
+                }
+              } catch (error) {
+                this.ModLoader.logger.error("Error copying MM jumps to animation buffer!");
+                this.ModLoader.logger.error(error.message);
+              }
+            } catch (error) {
+              this.ModLoader.logger.error("Error reading Majora's Mask jump animation files!");
+              this.ModLoader.logger.error(error.message);
+            }
+          } catch (error) {
+            this.ModLoader.logger.error("Error extracting Link's animations from the ROM!")
+            this.ModLoader.logger.error(error.message);
+          }
+        } catch (error) {
+          this.ModLoader.logger.error("Z64Lib error! Is Z64Lib outdated?");
+          this.ModLoader.logger.error(error.message);
+        }
       } catch (error) {
-        this.ModLoader.logger.error("Error loading Majora's Mask jump animations!")
+        this.ModLoader.logger.error("Error loading metadata from package.json!");
+        this.ModLoader.logger.error(error.message);
       }
+
     }
   }
 
