@@ -13,4 +13,3 @@ https://github.com/Neirn/MM_Jumps/releases
 
 
 # Known issues
-Not compatible with development versions of ML64
