@@ -19,10 +19,10 @@ class zzdata {
 }
 
 interface mm_jumps_options {
-  config_version: string
-  default_jump_weight: number
-  rolling_jump_weight: number
-  somersault_jump_weight: number
+  config_version: string;
+  default_jump_weight: number;
+  rolling_jump_weight: number;
+  somersault_jump_weight: number;
 }
 
 const enum LINK_ANIMETION_OFFSETS {
@@ -38,7 +38,7 @@ const enum LINK_ANIMETION_OFFSETS {
   LAND_SHORT_UNARMED = 0x1B7B40
 }
 
-const GAMEPLAY_KEEP_PTR = 0x8016A66C;
+const GAMEPLAY_KEEP_PTR: number = 0x8016A66C;
 
 const enum GAMEPLAY_KEEP_OFFSETS {
   ANIM_JUMP = 0x3148,
@@ -74,11 +74,11 @@ function getRandomInt(max: number): number {
 }
 
 function createAnimTableEntry(offset: number, frameCount: number): Buffer {
-  let bankOffset1 = (offset >> 16) & 0xFF;
-  let bankOffset2 = (offset >> 8) & 0xFF;
-  let bankOffset3 = offset & 0xFF;
-  let frameCount1 = frameCount >> 16 & 0xFF;
-  let frameCount2 = frameCount & 0xFF;
+  let bankOffset1: number = (offset >> 16) & 0xFF;
+  let bankOffset2: number = (offset >> 8) & 0xFF;
+  let bankOffset3: number = offset & 0xFF;
+  let frameCount1: number = frameCount >> 16 & 0xFF;
+  let frameCount2: number = frameCount & 0xFF;
   return Buffer.from([frameCount1, frameCount2, 0, 0, 7, bankOffset1, bankOffset2, bankOffset3]);
 }
 
