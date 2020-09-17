@@ -196,24 +196,27 @@ class main implements IPlugin {
     let flipDefault: number = 33;
     let somersaultDefault: number = 33;
 
-    if (!fs.existsSync(zz.config_file)) {
-      try {
-        this.createConfig(defaultDefault, flipDefault, somersaultDefault, zz.config_version, zz.config_file);
-      } catch (error) {
-        this.ModLoader.logger.warn("Couldn't generate config file!");
-      }
-
-    }
     try {
-      let config: mm_jumps_options = readJSONSync(zz.config_file);
-      /* Import settings when updating config file */
-      if (config.config_version !== zz.config_version) {
-        this.createConfig(config.default_jump_weight, config.rolling_jump_weight, config.somersault_jump_weight, zz.config_version, zz.config_file);
-      }
+      
+      let config: mm_jumps_options;
 
-      this.defaultWeight[0] = config.default_jump_weight;
-      this.flipWeight[0] = config.rolling_jump_weight;
-      this.somersaultWeight[0] = config.somersault_jump_weight;
+      /* default config file values */
+      if(!fs.existsSync(zz.config_file)) {
+        this.defaultWeight[0] = defaultDefault;
+        this.flipWeight[0] = flipDefault;
+        this.somersaultWeight[0] = somersaultDefault;
+      }
+      else {
+        config = readJSONSync(zz.config_file);
+        /* Import settings when updating config file */
+        if (config.config_version !== zz.config_version) {
+          this.createConfig(config.default_jump_weight, config.rolling_jump_weight, config.somersault_jump_weight, zz.config_version, zz.config_file);
+        }
+  
+        this.defaultWeight[0] = config.default_jump_weight;
+        this.flipWeight[0] = config.rolling_jump_weight;
+        this.somersaultWeight[0] = config.somersault_jump_weight;
+      }
     } catch (error) {
       this.ModLoader.logger.warn("Error reading config file! Loading default values...")
       this.defaultWeight[0] = defaultDefault;
@@ -336,7 +339,7 @@ class main implements IPlugin {
       if(this.ModLoader.ImGui.beginMenu("Mods")) {
         if(this.ModLoader.ImGui.beginMenu("MM Jumps")) {
           this.addSlider("Default Frequency", "##mmjumps_default_slider", this.defaultWeight);
-          this.addSlider("Front Flip Frequency", "#mmjumps_front_flip_slider", this.flipWeight);
+          this.addSlider("Front Flip Frequency", "##mmjumps_front_flip_slider", this.flipWeight);
           this.addSlider("Somersault Frequency", "##mmjumps_somersault_slider", this.somersaultWeight);
           if(this.ModLoader.ImGui.menuItem("Save")) {
             try {
@@ -356,8 +359,8 @@ class main implements IPlugin {
   }
 
   addSlider(menuItemName: string, sliderID: string, numberRef: number[]): void {
-    if(this.ModLoader.ImGui.menuItem(menuItemName)) {
-      this.ModLoader.ImGui.sliderInt(sliderID, numberRef, SLIDER_RANGE.MAX, SLIDER_RANGE.MIN);
+    if(this.ModLoader.ImGui.beginMenu(menuItemName)) {
+      this.ModLoader.ImGui.sliderInt(sliderID, numberRef, SLIDER_RANGE.MIN, SLIDER_RANGE.MAX);
       this.ModLoader.ImGui.endMenu();
     }
   }
