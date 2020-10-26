@@ -95,6 +95,11 @@ class main implements IPlugin {
   currentJump!: number;
   currentLanding!: number
   loadSuccess: boolean = false;
+  jumpNeedsUpdate: boolean = true;
+  defaultWeightStored!: number;
+  flipWeightStored!: number;
+  somersaultWeightStored!: number;
+
 
   applyJumpSwap(animOffset: number) {
     let jumpLen: number;
@@ -216,6 +221,9 @@ class main implements IPlugin {
         this.defaultWeight[0] = config.default_jump_weight;
         this.flipWeight[0] = config.rolling_jump_weight;
         this.somersaultWeight[0] = config.somersault_jump_weight;
+        this.defaultWeightStored = config.default_jump_weight;
+        this.flipWeightStored = config.rolling_jump_weight;
+        this.somersaultWeightStored = config.somersault_jump_weight;
       }
     } catch (error) {
       this.ModLoader.logger.warn("Error reading config file! Loading default values...")
@@ -244,14 +252,32 @@ class main implements IPlugin {
         this.applyLandingSwap(this.currentJump);
         this.wasPaused = false;
       }
+
+      /* Update the jump if the probability values were changed */
+      if(this.defaultWeightStored !== this.defaultWeight[0]) {
+        this.defaultWeightStored = this.defaultWeight[0];
+        this.jumpNeedsUpdate = true;
+      }
+
+      if(this.flipWeightStored !== this.flipWeight[0]) {
+        this.flipWeightStored = this.flipWeight[0];
+        this.jumpNeedsUpdate = true;
+      }
+
+      if(this.somersaultWeightStored !== this.somersaultWeight[0]) {
+        this.somersaultWeightStored = this.somersaultWeight[0];
+        this.jumpNeedsUpdate = true;
+      }
+
   
       switch (this.core.link.get_anim_id()) {
   
         case GAMEPLAY_KEEP_OFFSETS.ANIM_JUMP:
-          /* Apply the correct landing animation to whatever jump is currently happening */
+          /* Apply the correct landing animation to whatever jump is currently happening, queue jump update upon finishing landing */
           if(!this.jumpInProgress) {
             this.applyLandingSwap(this.currentJump);
             this.jumpInProgress = true;
+            this.jumpNeedsUpdate = true;
           }
           break;
   
@@ -265,8 +291,12 @@ class main implements IPlugin {
           break;
       
         default:
+
           /* Choose next jump */
-          this.applyJumpSwap(this.selectJumpRandomly());
+          if(this.jumpNeedsUpdate) {
+            this.applyJumpSwap(this.selectJumpRandomly());
+            this.jumpNeedsUpdate = false;
+          }
   
           if(this.currentLanding !== LINK_ANIMETION_OFFSETS.LAND_REGULAR) {
             /* fix landing for backflips, ledge drops, etc when MM Jump not in progress */
