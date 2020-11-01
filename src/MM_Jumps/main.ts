@@ -5,7 +5,6 @@ import {InjectCore} from 'modloader64_api/CoreInjection';
 import {Z64RomTools} from 'Z64Lib/API/Z64RomTools';
 import {Z64LibSupportedGames} from 'Z64Lib/API/Z64LibSupportedGames';
 import {onViUpdate} from 'modloader64_api/PluginLifecycle';
-
 import {readJSONSync, readFileSync, existsSync, writeFileSync} from 'fs-extra';
 import path from 'path';
 
@@ -217,7 +216,6 @@ class main implements IPlugin {
     let somersaultDefault: number = 33;
 
     try {
-      
       let config: mm_jumps_options;
 
       /* default config file values */
