@@ -1,12 +1,12 @@
 import {IPlugin, IModLoaderAPI, ModLoaderEvents} from 'modloader64_api/IModLoaderAPI';
 import {EventHandler} from 'modloader64_api/EventHandler'
-import {IOOTCore} from 'modloader64_api/OOT/OOTAPI';
+import {IOOTCore, OotEvents, LinkState} from 'modloader64_api/OOT/OOTAPI';
 import {InjectCore} from 'modloader64_api/CoreInjection';
 import {Z64RomTools} from 'Z64Lib/API/Z64RomTools';
 import {Z64LibSupportedGames} from 'Z64Lib/API/Z64LibSupportedGames';
 import {onViUpdate} from 'modloader64_api/PluginLifecycle';
-import {readJSONSync} from 'fs-extra';
-import fs from 'fs';
+
+import {readJSONSync, readFileSync, existsSync, writeFileSync} from 'fs-extra';
 import path from 'path';
 
 class zzdata {
@@ -100,6 +100,8 @@ class main implements IPlugin {
   flipWeightStored!: number;
   somersaultWeightStored!: number;
 
+  debugWindowOpen = false;
+
 
   applyJumpSwap(animOffset: number) {
     let jumpLen: number;
@@ -187,8 +189,21 @@ class main implements IPlugin {
     else return LINK_ANIMETION_OFFSETS.JUMP_REGULAR;
   }
 
-  createConfig(defaultWeight: number, rollWeight: number, somerWeight: number, configVersion: string, path: string): void {
-    fs.writeFileSync(path, JSON.stringify({config_version: configVersion, default_jump_weight: defaultWeight, rolling_jump_weight: rollWeight, somersault_jump_weight: somerWeight} as mm_jumps_options, null, 4));
+  createConfig(defaultWeight: number, rollWeight: number, somerWeight: number, configVersion: string, filePath: string): void {
+    writeFileSync(filePath, JSON.stringify({config_version: configVersion, default_jump_weight: defaultWeight, rolling_jump_weight: rollWeight, somersault_jump_weight: somerWeight} as mm_jumps_options, null, 4));
+  }
+
+  getCurrentJumpInMemory(): number {
+    /* need to get bottom 3 bytes of animation table entry */
+    return (this.ModLoader.emulator.rdramReadPtr32(GAMEPLAY_KEEP_PTR, GAMEPLAY_KEEP_OFFSETS.ANIM_JUMP + 5) << 16) | (this.ModLoader.emulator.rdramReadPtr16(GAMEPLAY_KEEP_PTR, GAMEPLAY_KEEP_OFFSETS.ANIM_JUMP + 7));
+  }
+
+  getCurrentJumpString(): string {
+    return this.ModLoader.emulator.rdramReadPtr32(GAMEPLAY_KEEP_PTR, GAMEPLAY_KEEP_OFFSETS.ANIM_JUMP + 5).toString(16) + this.ModLoader.emulator.rdramReadPtr16(GAMEPLAY_KEEP_PTR, GAMEPLAY_KEEP_OFFSETS.ANIM_JUMP + 7).toString(16);
+  }
+
+  isJumpUpToDate(): boolean {
+    return this.getCurrentJumpInMemory() === this.currentJump;
   }
 
   preinit(): void { }
@@ -206,7 +221,7 @@ class main implements IPlugin {
       let config: mm_jumps_options;
 
       /* default config file values */
-      if(!fs.existsSync(zz.config_file)) {
+      if(!existsSync(zz.config_file)) {
         this.defaultWeight[0] = defaultDefault;
         this.flipWeight[0] = flipDefault;
         this.somersaultWeight[0] = somersaultDefault;
@@ -221,9 +236,6 @@ class main implements IPlugin {
         this.defaultWeight[0] = config.default_jump_weight;
         this.flipWeight[0] = config.rolling_jump_weight;
         this.somersaultWeight[0] = config.somersault_jump_weight;
-        this.defaultWeightStored = config.default_jump_weight;
-        this.flipWeightStored = config.rolling_jump_weight;
-        this.somersaultWeightStored = config.somersault_jump_weight;
       }
     } catch (error) {
       this.ModLoader.logger.warn("Error reading config file! Loading default values...")
@@ -231,6 +243,10 @@ class main implements IPlugin {
       this.flipWeight[0] = flipDefault;
       this.somersaultWeight[0] = somersaultDefault;
     }
+
+    this.defaultWeightStored = this.defaultWeight[0];
+    this.flipWeightStored = this.flipWeight[0];
+    this.somersaultWeightStored = this.somersaultWeight[0];
 
     /* Offset is vanilla before swapping any animations */
     this.currentJump = LINK_ANIMETION_OFFSETS.JUMP_REGULAR;
@@ -293,7 +309,7 @@ class main implements IPlugin {
         default:
 
           /* Choose next jump */
-          if(this.jumpNeedsUpdate) {
+          if(this.jumpNeedsUpdate && this.core.link.state !== LinkState.BUSY) {
             this.applyJumpSwap(this.selectJumpRandomly());
             this.jumpNeedsUpdate = false;
           }
@@ -323,10 +339,10 @@ class main implements IPlugin {
         try {
           let animationData: Buffer = tools.decompressDMAFileFromRom(evt.rom, linkAnimdma);
           try {
-            let jumpFlipBuff: Buffer = fs.readFileSync(path.resolve(path.join(__dirname, zz.jump_flip_anim)));
-            let landFlipBuff: Buffer = fs.readFileSync(path.resolve(path.join(__dirname, zz.land_flip_anim)));
-            let jumpSomerBuff: Buffer = fs.readFileSync(path.resolve(path.join(__dirname, zz.jump_somersault_anim)));
-            let landSomerBuff: Buffer = fs.readFileSync(path.resolve(path.join(__dirname, zz.land_somersault_anim)));
+            let jumpFlipBuff: Buffer = readFileSync(path.resolve(path.join(__dirname, zz.jump_flip_anim)));
+            let landFlipBuff: Buffer = readFileSync(path.resolve(path.join(__dirname, zz.land_flip_anim)));
+            let jumpSomerBuff: Buffer = readFileSync(path.resolve(path.join(__dirname, zz.jump_somersault_anim)));
+            let landSomerBuff: Buffer = readFileSync(path.resolve(path.join(__dirname, zz.land_somersault_anim)));
             try {
               jumpFlipBuff.copy(animationData, LINK_ANIMETION_OFFSETS.JUMP_FLIP);
               landFlipBuff.copy(animationData, LINK_ANIMETION_OFFSETS.LAND_FLIP);
@@ -362,6 +378,11 @@ class main implements IPlugin {
     }
   }
 
+  @EventHandler(OotEvents.ON_SCENE_CHANGE)
+  onSceneChange() {
+    this.jumpNeedsUpdate = true;
+  }
+
   /* menu bar stuff */
   @onViUpdate()
   onViUpdate() {
@@ -380,12 +401,30 @@ class main implements IPlugin {
               this.ModLoader.logger.error(error.message);
             }
           }
+
+          // debug stuff
+          /*
+          if(this.ModLoader.ImGui.menuItem("Open Debug Menu")) {
+            this.debugWindowOpen = true;
+          }
+          */
+
           this.ModLoader.ImGui.endMenu();
         }
         this.ModLoader.ImGui.endMenu();
       }
       this.ModLoader.ImGui.endMainMenuBar();
     }
+
+    /*
+    if(this.debugWindowOpen) {
+      if(this.ModLoader.ImGui.begin("MM Jumps Debug", [this.debugWindowOpen])) {
+        this.ModLoader.ImGui.text("Current Jump Selected: 0x" + this.getCurrentJumpString());
+        this.ModLoader.ImGui.end();
+      }
+    }
+    */
+
   }
 
   addSlider(menuItemName: string, sliderID: string, numberRef: number[]): void {
