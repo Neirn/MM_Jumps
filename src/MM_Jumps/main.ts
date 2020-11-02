@@ -259,6 +259,11 @@ class main implements IPlugin {
         this.wasPaused = true;
         return;
       }
+
+      if(this.core.link.state === LinkState.BUSY || this.core.link.state === LinkState.SWIMMING) {
+        this.jumpNeedsUpdate = true;
+        return;
+      }
   
       // restore the animation if the game was paused in the middle of a jump
       if(this.wasPaused) {
@@ -307,7 +312,7 @@ class main implements IPlugin {
         default:
 
           /* Choose next jump */
-          if(this.jumpNeedsUpdate && this.core.link.state !== LinkState.BUSY) {
+          if(this.jumpNeedsUpdate) {
             this.applyJumpSwap(this.selectJumpRandomly());
             this.jumpNeedsUpdate = false;
           }
@@ -376,9 +381,11 @@ class main implements IPlugin {
     }
   }
 
+  /* Upon reloading gameplay_keep, the jump resets to default, so queue up a new one */
   @EventHandler(OotEvents.ON_SCENE_CHANGE)
   onSceneChange() {
     this.jumpNeedsUpdate = true;
+    this.currentJump = LINK_ANIMETION_OFFSETS.JUMP_REGULAR;
   }
 
   /* menu bar stuff */
@@ -400,9 +407,8 @@ class main implements IPlugin {
             }
           }
 
-          // debug stuff
           /*
-          if(this.ModLoader.ImGui.menuItem("Open Debug Menu")) {
+          if(this.ModLoader.ImGui.menuItem("Open Debug Window")) {
             this.debugWindowOpen = true;
           }
           */
@@ -414,10 +420,11 @@ class main implements IPlugin {
       this.ModLoader.ImGui.endMainMenuBar();
     }
 
-    /*
+    /*  
     if(this.debugWindowOpen) {
       if(this.ModLoader.ImGui.begin("MM Jumps Debug", [this.debugWindowOpen])) {
         this.ModLoader.ImGui.text("Current Jump Selected: 0x" + this.getCurrentJumpString());
+        this.ModLoader.ImGui.text("Current Link State: " + this.core.link.state);
         this.ModLoader.ImGui.end();
       }
     }
