@@ -223,27 +223,36 @@ class main implements IPlugin {
         this.defaultWeight[0] = defaultDefault;
         this.flipWeight[0] = flipDefault;
         this.somersaultWeight[0] = somersaultDefault;
+        this.isSequentialMode[0] = sequentialDefault;
       }
       else {
         config = readJSONSync(zz.config_file);
+
+        if(!config.sequential_mode) {
+          config.sequential_mode = false;
+        }
+        
         /* Import settings when updating config file */
         if (config.config_version !== zz.config_version) {
-          if(config.sequential_mode === undefined) {
-            config.sequential_mode = false;
-          }
+          this.ModLoader.logger.info("Config file out of date! Attempting to update...");
           this.createConfig(config.default_jump_weight, config.rolling_jump_weight, config.somersault_jump_weight, config.sequential_mode, zz.config_version, zz.config_file);
         }
-  
+
         this.defaultWeight[0] = config.default_jump_weight;
         this.flipWeight[0] = config.rolling_jump_weight;
         this.somersaultWeight[0] = config.somersault_jump_weight;
+        this.isSequentialMode[0] = config.sequential_mode;
       }
     } catch (error) {
+      this.ModLoader.logger.error(error.name + ": " + error.message)
       this.ModLoader.logger.warn("Error reading config file! Loading default values...")
       this.defaultWeight[0] = defaultDefault;
       this.flipWeight[0] = flipDefault;
       this.somersaultWeight[0] = somersaultDefault;
       this.isSequentialMode[0] = sequentialDefault;
+      if(existsSync(zz.config_file)) {
+        this.createConfig(this.defaultWeight[0], this.flipWeight[0], this.somersaultWeight[0], this.isSequentialMode[0], zz.config_version, zz.config_file);
+      }
     }
 
     /* Offset is vanilla before swapping any animations */
