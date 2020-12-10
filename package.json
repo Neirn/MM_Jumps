@@ -1,6 +1,6 @@
 {
   "name": "MM_Jumps",
-  "version": "1.0.6",
+  "version": "1.0.9",
   "description": "A plugin that ports some jumping animations from Majora's Mask into Ocarina of Time and randomly switches between them using the ModLoader64 interface. Frequency of each jump is configurable in mm_jumps_config.json. Does not work on other emulators or real hardware.",
   "main": "index.js",
   "scripts": {

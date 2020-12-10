@@ -22,6 +22,7 @@ interface mm_jumps_options {
   default_jump_weight: number;
   rolling_jump_weight: number;
   somersault_jump_weight: number;
+  sequential_mode?: boolean;
 }
 
 const enum LINK_ANIMETION_OFFSETS {
@@ -95,10 +96,8 @@ class main implements IPlugin {
   currentLanding!: number
   loadSuccess: boolean = false;
   jumpNeedsUpdate: boolean = true;
-  defaultWeightStored!: number;
-  flipWeightStored!: number;
-  somersaultWeightStored!: number;
-
+  isSequentialMode: boolean[] = [false];
+  currentJumpInSequence: number = 0;
   debugWindowOpen = false;
 
 
@@ -188,8 +187,8 @@ class main implements IPlugin {
     else return LINK_ANIMETION_OFFSETS.JUMP_REGULAR;
   }
 
-  createConfig(defaultWeight: number, rollWeight: number, somerWeight: number, configVersion: string, filePath: string): void {
-    writeFileSync(filePath, JSON.stringify({config_version: configVersion, default_jump_weight: defaultWeight, rolling_jump_weight: rollWeight, somersault_jump_weight: somerWeight} as mm_jumps_options, null, 4));
+  createConfig(defaultWeight: number, rollWeight: number, somerWeight: number, seqMode: boolean, configVersion: string, filePath: string): void {
+    writeFileSync(filePath, JSON.stringify({config_version: configVersion, default_jump_weight: defaultWeight, rolling_jump_weight: rollWeight, somersault_jump_weight: somerWeight, sequential_mode: seqMode} as mm_jumps_options, null, 5));
   }
 
   getCurrentJumpInMemory(): number {
@@ -214,6 +213,7 @@ class main implements IPlugin {
     let defaultDefault: number = 34;
     let flipDefault: number = 33;
     let somersaultDefault: number = 33;
+    let sequentialDefault: boolean = false;
 
     try {
       let config: mm_jumps_options;
@@ -228,7 +228,10 @@ class main implements IPlugin {
         config = readJSONSync(zz.config_file);
         /* Import settings when updating config file */
         if (config.config_version !== zz.config_version) {
-          this.createConfig(config.default_jump_weight, config.rolling_jump_weight, config.somersault_jump_weight, zz.config_version, zz.config_file);
+          if(config.sequential_mode === undefined) {
+            config.sequential_mode = false;
+          }
+          this.createConfig(config.default_jump_weight, config.rolling_jump_weight, config.somersault_jump_weight, config.sequential_mode, zz.config_version, zz.config_file);
         }
   
         this.defaultWeight[0] = config.default_jump_weight;
@@ -240,11 +243,8 @@ class main implements IPlugin {
       this.defaultWeight[0] = defaultDefault;
       this.flipWeight[0] = flipDefault;
       this.somersaultWeight[0] = somersaultDefault;
+      this.isSequentialMode[0] = sequentialDefault;
     }
-
-    this.defaultWeightStored = this.defaultWeight[0];
-    this.flipWeightStored = this.flipWeight[0];
-    this.somersaultWeightStored = this.somersaultWeight[0];
 
     /* Offset is vanilla before swapping any animations */
     this.currentJump = LINK_ANIMETION_OFFSETS.JUMP_REGULAR;
@@ -268,27 +268,12 @@ class main implements IPlugin {
       // restore the animation if the game was paused in the middle of a jump
       if(this.wasPaused) {
         this.applyJumpSwap(this.currentJump);
-        this.applyLandingSwap(this.currentJump);
+        if(this.jumpInProgress) {
+          this.applyLandingSwap(this.currentJump);
+        }
         this.wasPaused = false;
       }
 
-      /* Update the jump if the probability values were changed */
-      if(this.defaultWeightStored !== this.defaultWeight[0]) {
-        this.defaultWeightStored = this.defaultWeight[0];
-        this.jumpNeedsUpdate = true;
-      }
-
-      if(this.flipWeightStored !== this.flipWeight[0]) {
-        this.flipWeightStored = this.flipWeight[0];
-        this.jumpNeedsUpdate = true;
-      }
-
-      if(this.somersaultWeightStored !== this.somersaultWeight[0]) {
-        this.somersaultWeightStored = this.somersaultWeight[0];
-        this.jumpNeedsUpdate = true;
-      }
-
-  
       switch (this.core.link.get_anim_id()) {
   
         case GAMEPLAY_KEEP_OFFSETS.ANIM_JUMP:
@@ -297,6 +282,8 @@ class main implements IPlugin {
             this.applyLandingSwap(this.currentJump);
             this.jumpInProgress = true;
             this.jumpNeedsUpdate = true;
+            if(this.isSequentialMode[0])
+              this.currentJumpInSequence = (this.currentJumpInSequence + 1) % 3;
           }
           break;
   
@@ -313,7 +300,29 @@ class main implements IPlugin {
 
           /* Choose next jump */
           if(this.jumpNeedsUpdate) {
-            this.applyJumpSwap(this.selectJumpRandomly());
+            if(this.isSequentialMode[0]) {
+              switch (this.currentJumpInSequence) {
+                case 0:
+                  this.currentJump = LINK_ANIMETION_OFFSETS.JUMP_REGULAR;
+                  break;
+
+                case 1:
+                  this.currentJump = LINK_ANIMETION_OFFSETS.JUMP_FLIP;
+                  break;
+
+                case 2:
+                  this.currentJump = LINK_ANIMETION_OFFSETS.JUMP_SOMERSAULT;
+                  break;
+
+                default:
+                  break;
+              }
+
+              this.applyJumpSwap(this.currentJump);
+
+            } else {
+              this.applyJumpSwap(this.selectJumpRandomly());
+            }
             this.jumpNeedsUpdate = false;
           }
   
@@ -397,16 +406,20 @@ class main implements IPlugin {
           this.addSlider("Default Frequency", "##mmjumps_default_slider", this.defaultWeight);
           this.addSlider("Front Flip Frequency", "##mmjumps_front_flip_slider", this.flipWeight);
           this.addSlider("Somersault Frequency", "##mmjumps_somersault_slider", this.somersaultWeight);
+          if(this.ModLoader.ImGui.checkbox("Sequential Mode", this.isSequentialMode)) {
+            this.currentJumpInSequence = 0;
+            this.jumpNeedsUpdate = true;
+          }
           if(this.ModLoader.ImGui.menuItem("Save")) {
             try {
               let zz: zzdata = (this as any)['metadata']['configData'];
-              this.createConfig(this.defaultWeight[0], this.flipWeight[0], this.somersaultWeight[0], zz.config_version, zz.config_file);
+              this.createConfig(this.defaultWeight[0], this.flipWeight[0], this.somersaultWeight[0], this.isSequentialMode[0], zz.config_version, zz.config_file);
             } catch (error) {
               this.ModLoader.logger.error("There was an error saving the changes to the config file!")
               this.ModLoader.logger.error(error.message);
             }
           }
-
+          
           /*
           if(this.ModLoader.ImGui.menuItem("Open Debug Window")) {
             this.debugWindowOpen = true;
@@ -420,7 +433,7 @@ class main implements IPlugin {
       this.ModLoader.ImGui.endMainMenuBar();
     }
 
-    /*  
+    /*
     if(this.debugWindowOpen) {
       if(this.ModLoader.ImGui.begin("MM Jumps Debug", [this.debugWindowOpen])) {
         this.ModLoader.ImGui.text("Current Jump Selected: 0x" + this.getCurrentJumpString());
@@ -429,12 +442,13 @@ class main implements IPlugin {
       }
     }
     */
-
   }
 
   addSlider(menuItemName: string, sliderID: string, numberRef: number[]): void {
     if(this.ModLoader.ImGui.beginMenu(menuItemName)) {
-      this.ModLoader.ImGui.sliderInt(sliderID, numberRef, SLIDER_RANGE.MIN, SLIDER_RANGE.MAX);
+      if(this.ModLoader.ImGui.sliderInt(sliderID, numberRef, SLIDER_RANGE.MIN, SLIDER_RANGE.MAX)) {
+        this.jumpNeedsUpdate = true;
+      }
       this.ModLoader.ImGui.endMenu();
     }
   }
