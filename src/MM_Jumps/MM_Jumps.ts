@@ -1,5 +1,6 @@
 import {IPlugin, IModLoaderAPI, ModLoaderEvents} from 'modloader64_api/IModLoaderAPI';
 import {EventHandler} from 'modloader64_api/EventHandler'
+import {Heap} from 'modloader64_api/heap'
 import {IOOTCore, OotEvents, LinkState} from 'modloader64_api/OOT/OOTAPI';
 import {InjectCore} from 'modloader64_api/CoreInjection';
 import {Z64RomTools} from 'Z64Lib/API/Z64RomTools';
