@@ -1,12 +1,13 @@
-import {IPlugin, IModLoaderAPI, ModLoaderEvents} from 'modloader64_api/IModLoaderAPI';
-import {EventHandler} from 'modloader64_api/EventHandler'
-import {Heap} from 'modloader64_api/heap'
-import {IOOTCore, OotEvents, LinkState} from 'modloader64_api/OOT/OOTAPI';
-import {InjectCore} from 'modloader64_api/CoreInjection';
-import {Z64RomTools} from 'Z64Lib/API/Z64RomTools';
-import {Z64LibSupportedGames} from 'Z64Lib/API/Z64LibSupportedGames';
-import {onViUpdate} from 'modloader64_api/PluginLifecycle';
-import {readJSONSync, readFileSync, existsSync, writeFileSync} from 'fs-extra';
+import { IPlugin, IModLoaderAPI, ModLoaderEvents } from 'modloader64_api/IModLoaderAPI';
+import { bus, EventHandler } from 'modloader64_api/EventHandler'
+import { Heap } from 'modloader64_api/heap'
+import { IOOTCore, OotEvents, LinkState, Age } from 'modloader64_api/OOT/OOTAPI';
+import { InjectCore } from 'modloader64_api/CoreInjection';
+import { Z64RomTools } from 'Z64Lib/API/Z64RomTools';
+import { Z64LibSupportedGames } from 'Z64Lib/API/Z64LibSupportedGames';
+import { onViUpdate, Postinit } from 'modloader64_api/PluginLifecycle';
+import { readJSONSync, readFileSync, existsSync, writeFileSync } from 'fs-extra';
+import { OotOnlineEvents } from './OotoAPI/OotoAPI';
 import path from 'path';
 
 class zzdata {
@@ -40,6 +41,7 @@ const enum LINK_ANIMETION_OFFSETS {
 }
 
 const GAMEPLAY_KEEP_PTR: number = 0x8016A66C;
+const HEAP_SIZE: number = 0x37800;
 
 const enum GAMEPLAY_KEEP_OFFSETS {
   ANIM_JUMP = 0x3148,
@@ -59,7 +61,7 @@ const enum ANIM_LENGTHS {
   LAND_DEFAULT_FALL = 0x15,
   JUMP_FLIP = 0xD,
   LAND_FLIP = 0xD,
-  JUMP_SOMERSAULT =  0xE,
+  JUMP_SOMERSAULT = 0xE,
   LAND_SOMERSAULT = 0x10,
   LAND_DEFAULT_SHORT = 0x10,
   LAND_DEFAULT_SHORT_UNARMED = 0x10
@@ -74,13 +76,13 @@ function getRandomInt(max: number): number {
   return Math.floor(Math.random() * Math.floor(max));
 }
 
-function createAnimTableEntry(offset: number, frameCount: number): Buffer {
+function createAnimTableEntry(offset: number, frameCount: number, segment: number): Buffer {
   let bankOffset1: number = (offset >> 16) & 0xFF;
   let bankOffset2: number = (offset >> 8) & 0xFF;
   let bankOffset3: number = offset & 0xFF;
   let frameCount1: number = frameCount >> 16 & 0xFF;
   let frameCount2: number = frameCount & 0xFF;
-  return Buffer.from([frameCount1, frameCount2, 0, 0, 7, bankOffset1, bankOffset2, bankOffset3]);
+  return Buffer.from([frameCount1, frameCount2, 0, 0, segment, bankOffset1, bankOffset2, bankOffset3]);
 }
 
 class main implements IPlugin {
@@ -100,10 +102,17 @@ class main implements IPlugin {
   isSequentialMode: boolean[] = [false];
   currentJumpInSequence: number = 0;
   debugWindowOpen = false;
-
+  myAlloc!: { model: Buffer, age: Age, slot: number, pointer: number };
+  jumpsHeap!: Heap;
+  jumpFlipDataPtr: number = 0;
+  jumpSomersaultDataPtr: number = 0;
+  landFlipDataPtr: number = 0;
+  landSomersaultDataPtr: number = 0;
+  myNamePtr: number = 0;
 
   applyJumpSwap(animOffset: number) {
     let jumpLen: number;
+    let seg: number = 80;
 
     switch (animOffset) {
       case LINK_ANIMETION_OFFSETS.JUMP_SOMERSAULT:
@@ -113,15 +122,16 @@ class main implements IPlugin {
       case LINK_ANIMETION_OFFSETS.JUMP_FLIP:
         jumpLen = ANIM_LENGTHS.JUMP_FLIP;
         break;
-    
+
       default:
         /* Just play the regular flip animation if the parameter isn't one of the two jumps */
         animOffset = LINK_ANIMETION_OFFSETS.JUMP_REGULAR;
         jumpLen = ANIM_LENGTHS.JUMP_DEFAULT;
+        seg = 7;
         break;
     }
 
-    this.ModLoader.emulator.rdramWritePtrBuffer(GAMEPLAY_KEEP_PTR, GAMEPLAY_KEEP_OFFSETS.ANIM_JUMP, createAnimTableEntry(animOffset, jumpLen));
+    this.ModLoader.emulator.rdramWritePtrBuffer(GAMEPLAY_KEEP_PTR, GAMEPLAY_KEEP_OFFSETS.ANIM_JUMP, createAnimTableEntry(animOffset, jumpLen, seg));
     this.currentJump = animOffset;
   }
 
@@ -136,6 +146,7 @@ class main implements IPlugin {
     let fallFreeOffset: number = LINK_ANIMETION_OFFSETS.FALL_FREE;
     let landShortOffset: number = LINK_ANIMETION_OFFSETS.LAND_SHORT;
     let landShortUnarmedOffset: number = LINK_ANIMETION_OFFSETS.LAND_SHORT_UNARMED;
+    let seg = 7;
 
     /* Only swap from default during MM jump */
     let isMMJump: boolean = false;
@@ -151,12 +162,12 @@ class main implements IPlugin {
         landLen = ANIM_LENGTHS.LAND_FLIP;
         landOffset = LINK_ANIMETION_OFFSETS.LAND_FLIP;
         break;
-    
+
       default:
         break;
     }
 
-    if(isMMJump) {
+    if (isMMJump) {
       fallLen = landLen;
       landShortLen = landLen;
       landShortUnarmedLen = landLen;
@@ -164,13 +175,14 @@ class main implements IPlugin {
       fallFreeOffset = landOffset;
       landShortOffset = landOffset;
       landShortUnarmedOffset = landOffset;
+      seg = 0x80;
     }
 
-    this.ModLoader.emulator.rdramWritePtrBuffer(GAMEPLAY_KEEP_PTR, GAMEPLAY_KEEP_OFFSETS.ANIM_LAND, createAnimTableEntry(landOffset, landLen));
-    this.ModLoader.emulator.rdramWritePtrBuffer(GAMEPLAY_KEEP_PTR, GAMEPLAY_KEEP_OFFSETS.ANIM_FALL_LAND, createAnimTableEntry(fallOffset, fallLen));
-    this.ModLoader.emulator.rdramWritePtrBuffer(GAMEPLAY_KEEP_PTR, GAMEPLAY_KEEP_OFFSETS.ANIM_FALL_LAND_UNARMED, createAnimTableEntry(fallFreeOffset, fallLen));
-    this.ModLoader.emulator.rdramWritePtrBuffer(GAMEPLAY_KEEP_PTR, GAMEPLAY_KEEP_OFFSETS.ANIM_LAND_SHORT, createAnimTableEntry(landShortOffset, landShortLen));
-    this.ModLoader.emulator.rdramWritePtrBuffer(GAMEPLAY_KEEP_PTR, GAMEPLAY_KEEP_OFFSETS.ANIM_LAND_SHORT_UNARMED, createAnimTableEntry(landShortUnarmedOffset, landShortUnarmedLen));
+    this.ModLoader.emulator.rdramWritePtrBuffer(GAMEPLAY_KEEP_PTR, GAMEPLAY_KEEP_OFFSETS.ANIM_LAND, createAnimTableEntry(landOffset, landLen, seg));
+    this.ModLoader.emulator.rdramWritePtrBuffer(GAMEPLAY_KEEP_PTR, GAMEPLAY_KEEP_OFFSETS.ANIM_FALL_LAND, createAnimTableEntry(fallOffset, fallLen, seg));
+    this.ModLoader.emulator.rdramWritePtrBuffer(GAMEPLAY_KEEP_PTR, GAMEPLAY_KEEP_OFFSETS.ANIM_FALL_LAND_UNARMED, createAnimTableEntry(fallFreeOffset, fallLen, seg));
+    this.ModLoader.emulator.rdramWritePtrBuffer(GAMEPLAY_KEEP_PTR, GAMEPLAY_KEEP_OFFSETS.ANIM_LAND_SHORT, createAnimTableEntry(landShortOffset, landShortLen, seg));
+    this.ModLoader.emulator.rdramWritePtrBuffer(GAMEPLAY_KEEP_PTR, GAMEPLAY_KEEP_OFFSETS.ANIM_LAND_SHORT_UNARMED, createAnimTableEntry(landShortUnarmedOffset, landShortUnarmedLen, seg));
     this.currentLanding = landOffset;
   }
 
@@ -179,7 +191,7 @@ class main implements IPlugin {
 
     let rng: number = getRandomInt(total);
 
-    if(rng < this.somersaultWeight[0]) {
+    if (rng < this.somersaultWeight[0]) {
       return LINK_ANIMETION_OFFSETS.JUMP_SOMERSAULT;
     }
     else if (rng < this.somersaultWeight[0] + this.flipWeight[0]) {
@@ -189,7 +201,7 @@ class main implements IPlugin {
   }
 
   createConfig(defaultWeight: number, rollWeight: number, somerWeight: number, seqMode: boolean, configVersion: string, filePath: string): void {
-    writeFileSync(filePath, JSON.stringify({config_version: configVersion, default_jump_weight: defaultWeight, rolling_jump_weight: rollWeight, somersault_jump_weight: somerWeight, sequential_mode: seqMode} as mm_jumps_options, null, 5));
+    writeFileSync(filePath, JSON.stringify({ config_version: configVersion, default_jump_weight: defaultWeight, rolling_jump_weight: rollWeight, somersault_jump_weight: somerWeight, sequential_mode: seqMode } as mm_jumps_options, null, 5));
   }
 
   getCurrentJumpInMemory(): number {
@@ -220,7 +232,7 @@ class main implements IPlugin {
       let config: mm_jumps_options;
 
       /* default config file values */
-      if(!existsSync(zz.config_file)) {
+      if (!existsSync(zz.config_file)) {
         this.defaultWeight[0] = defaultDefault;
         this.flipWeight[0] = flipDefault;
         this.somersaultWeight[0] = somersaultDefault;
@@ -229,10 +241,10 @@ class main implements IPlugin {
       else {
         config = readJSONSync(zz.config_file);
 
-        if(!config.sequential_mode) {
+        if (!config.sequential_mode) {
           config.sequential_mode = false;
         }
-        
+
         /* Import settings when updating config file */
         if (config.config_version !== zz.config_version) {
           this.ModLoader.logger.info("Config file out of date! Attempting to update...");
@@ -251,7 +263,7 @@ class main implements IPlugin {
       this.flipWeight[0] = flipDefault;
       this.somersaultWeight[0] = somersaultDefault;
       this.isSequentialMode[0] = sequentialDefault;
-      if(existsSync(zz.config_file)) {
+      if (existsSync(zz.config_file)) {
         this.createConfig(this.defaultWeight[0], this.flipWeight[0], this.somersaultWeight[0], this.isSequentialMode[0], zz.config_version, zz.config_file);
       }
     }
@@ -259,44 +271,49 @@ class main implements IPlugin {
     /* Offset is vanilla before swapping any animations */
     this.currentJump = LINK_ANIMETION_OFFSETS.JUMP_REGULAR;
     this.currentLanding = LINK_ANIMETION_OFFSETS.LAND_REGULAR;
+
+    /* gimme memory */
+    this.myAlloc = { model: Buffer.alloc(1), age: Age.ADULT, slot: 0, pointer: 0 };
+    bus.emit(OotOnlineEvents.ALLOCATE_MODEL_BLOCK, this.myAlloc)
+
   }
 
   postinit(): void { }
 
-  onTick(): void { 
-    if(this.loadSuccess) {
-      if(this.core.helper.isPaused()) {
+  onTick(): void {
+    if (this.loadSuccess) {
+      if (this.core.helper.isPaused()) {
         this.wasPaused = true;
         return;
       }
 
-      if(this.core.link.state === LinkState.BUSY || this.core.link.state === LinkState.SWIMMING) {
+      if (this.core.link.state === LinkState.BUSY || this.core.link.state === LinkState.SWIMMING) {
         this.jumpNeedsUpdate = true;
         return;
       }
-  
+
       // restore the animation if the game was paused in the middle of a jump
-      if(this.wasPaused) {
+      if (this.wasPaused) {
         this.applyJumpSwap(this.currentJump);
-        if(this.jumpInProgress) {
+        if (this.jumpInProgress) {
           this.applyLandingSwap(this.currentJump);
         }
         this.wasPaused = false;
       }
 
       switch (this.core.link.get_anim_id()) {
-  
+
         case GAMEPLAY_KEEP_OFFSETS.ANIM_JUMP:
           /* Apply the correct landing animation to whatever jump is currently happening, queue jump update upon finishing landing */
-          if(!this.jumpInProgress) {
+          if (!this.jumpInProgress) {
             this.applyLandingSwap(this.currentJump);
             this.jumpInProgress = true;
             this.jumpNeedsUpdate = true;
-            if(this.isSequentialMode[0])
+            if (this.isSequentialMode[0])
               this.currentJumpInSequence = (this.currentJumpInSequence + 1) % 3;
           }
           break;
-  
+
         /* Don't update the jumping and landing animations while they're playing */
         case GAMEPLAY_KEEP_OFFSETS.ANIM_LAND:
         case GAMEPLAY_KEEP_OFFSETS.ANIM_LAND_SHORT:
@@ -305,12 +322,12 @@ class main implements IPlugin {
         case GAMEPLAY_KEEP_OFFSETS.ANIM_FALL_LAND_UNARMED:
         case GAMEPLAY_KEEP_OFFSETS.ANIM_NORMAL_LANDING_WAIT:
           break;
-      
+
         default:
 
           /* Choose next jump */
-          if(this.jumpNeedsUpdate) {
-            if(this.isSequentialMode[0]) {
+          if (this.jumpNeedsUpdate) {
+            if (this.isSequentialMode[0]) {
               switch (this.currentJumpInSequence) {
                 case 0:
                   this.currentJump = LINK_ANIMETION_OFFSETS.JUMP_REGULAR;
@@ -335,14 +352,14 @@ class main implements IPlugin {
             }
             this.jumpNeedsUpdate = false;
           }
-  
-          if(this.currentLanding !== LINK_ANIMETION_OFFSETS.LAND_REGULAR) {
+
+          if (this.currentLanding !== LINK_ANIMETION_OFFSETS.LAND_REGULAR) {
             /* fix landing for backflips, ledge drops, etc when MM Jump not in progress */
             this.applyLandingSwap(LINK_ANIMETION_OFFSETS.JUMP_REGULAR);
           }
-  
+
           this.jumpInProgress = false;
-  
+
           break;
       }
     }
@@ -357,14 +374,39 @@ class main implements IPlugin {
     try {
       let zz: zzdata = (this as any)['metadata']['configData'];
       try {
-        let tools: Z64RomTools = new Z64RomTools(this.ModLoader, Z64LibSupportedGames.OCARINA_OF_TIME);
+        // let tools: Z64RomTools = new Z64RomTools(this.ModLoader, Z64LibSupportedGames.OCARINA_OF_TIME);
         try {
-          let animationData: Buffer = tools.decompressDMAFileFromRom(evt.rom, linkAnimdma);
+          // let animationData: Buffer = tools.decompressDMAFileFromRom(evt.rom, linkAnimdma);
+          return;
           try {
             let jumpFlipBuff: Buffer = readFileSync(path.resolve(path.join(__dirname, zz.jump_flip_anim)));
             let landFlipBuff: Buffer = readFileSync(path.resolve(path.join(__dirname, zz.land_flip_anim)));
             let jumpSomerBuff: Buffer = readFileSync(path.resolve(path.join(__dirname, zz.jump_somersault_anim)));
             let landSomerBuff: Buffer = readFileSync(path.resolve(path.join(__dirname, zz.land_somersault_anim)));
+
+            try {
+              this.jumpsHeap = new Heap(this.ModLoader.emulator, this.myAlloc.pointer, HEAP_SIZE);
+
+              this.jumpFlipDataPtr = this.jumpsHeap.malloc(jumpFlipBuff.length);
+              this.jumpSomersaultDataPtr = this.jumpsHeap.malloc(jumpSomerBuff.length);
+              this.landFlipDataPtr = this.jumpsHeap.malloc(landFlipBuff.length);
+              this.landSomersaultDataPtr = this.jumpsHeap.malloc(landSomerBuff.length);
+
+              try {
+                this.ModLoader.emulator.rdramWriteBuffer(this.jumpFlipDataPtr, jumpFlipBuff);
+                this.ModLoader.emulator.rdramWriteBuffer(this.jumpSomersaultDataPtr, jumpSomerBuff);
+                this.ModLoader.emulator.rdramWriteBuffer(this.landFlipDataPtr, landFlipBuff);
+                this.ModLoader.emulator.rdramWriteBuffer(this.landSomersaultDataPtr, landSomerBuff);
+              } catch (error) {
+                this.ModLoader.logger.error("Error copying jump animations to heap!");
+                throw new Error(error.message);
+              }
+            } catch (error) {
+              this.ModLoader.logger.error("Error creating heap!");
+              this.ModLoader.logger.error(error.message);
+              throw new Error(error.message);
+            }
+            /*
             try {
               jumpFlipBuff.copy(animationData, LINK_ANIMETION_OFFSETS.JUMP_FLIP);
               landFlipBuff.copy(animationData, LINK_ANIMETION_OFFSETS.LAND_FLIP);
@@ -381,7 +423,7 @@ class main implements IPlugin {
             } catch (error) {
               this.ModLoader.logger.error("Error copying MM jumps to animation buffer!");
               this.ModLoader.logger.error(error.message);
-            }
+            } */
           } catch (error) {
             this.ModLoader.logger.error("Error reading Majora's Mask jump animation files!");
             this.ModLoader.logger.error(error.message);
@@ -394,8 +436,68 @@ class main implements IPlugin {
         this.ModLoader.logger.error("Z64Lib error! Is Z64Lib outdated?");
         this.ModLoader.logger.error(error.message);
       }
+
     } catch (error) {
       this.ModLoader.logger.error("Error loading metadata from package.json!");
+      this.ModLoader.logger.error(error.message);
+    }
+  }
+
+  @Postinit()
+  setupJumpsHeap() {
+    let zz: zzdata = (this as any)['metadata']['configData'];
+    try {
+      let jumpFlipBuff: Buffer = readFileSync(path.resolve(path.join(__dirname, zz.jump_flip_anim)));
+      let landFlipBuff: Buffer = readFileSync(path.resolve(path.join(__dirname, zz.land_flip_anim)));
+      let jumpSomerBuff: Buffer = readFileSync(path.resolve(path.join(__dirname, zz.jump_somersault_anim)));
+      let landSomerBuff: Buffer = readFileSync(path.resolve(path.join(__dirname, zz.land_somersault_anim)));
+
+      try {
+        this.jumpsHeap = new Heap(this.ModLoader.emulator, this.myAlloc.pointer, HEAP_SIZE);
+
+        let myName: Buffer = Buffer.from("MM_JUMPS_HEAP_V1", "ascii");
+
+        this.myNamePtr = this.jumpsHeap.malloc(myName.length);
+        this.jumpFlipDataPtr = this.jumpsHeap.malloc(jumpFlipBuff.length);
+        this.jumpSomersaultDataPtr = this.jumpsHeap.malloc(jumpSomerBuff.length);
+        this.landFlipDataPtr = this.jumpsHeap.malloc(landFlipBuff.length);
+        this.landSomersaultDataPtr = this.jumpsHeap.malloc(landSomerBuff.length);
+
+        try {
+          this.ModLoader.emulator.rdramWriteBuffer(this.myNamePtr, myName);
+          this.ModLoader.emulator.rdramWriteBuffer(this.jumpFlipDataPtr, jumpFlipBuff);
+          this.ModLoader.emulator.rdramWriteBuffer(this.jumpSomersaultDataPtr, jumpSomerBuff);
+          this.ModLoader.emulator.rdramWriteBuffer(this.landFlipDataPtr, landFlipBuff);
+          this.ModLoader.emulator.rdramWriteBuffer(this.landSomersaultDataPtr, landSomerBuff);
+        } catch (error) {
+          this.ModLoader.logger.error("Error copying jump animations to heap!");
+          throw new Error(error.message);
+        }
+      } catch (error) {
+        this.ModLoader.logger.error("Error creating heap!");
+        this.ModLoader.logger.error(error.message);
+        throw new Error(error.message);
+      }
+      /*
+      try {
+        jumpFlipBuff.copy(animationData, LINK_ANIMETION_OFFSETS.JUMP_FLIP);
+        landFlipBuff.copy(animationData, LINK_ANIMETION_OFFSETS.LAND_FLIP);
+        jumpSomerBuff.copy(animationData, LINK_ANIMETION_OFFSETS.JUMP_SOMERSAULT);
+        landSomerBuff.copy(animationData, LINK_ANIMETION_OFFSETS.LAND_SOMERSAULT);
+        try {
+          tools.recompressDMAFileIntoRom(evt.rom, linkAnimdma, animationData);
+          this.ModLoader.logger.info("Majora's Mask jump animations loaded!");
+          this.loadSuccess = true;
+        } catch (error) {
+          this.ModLoader.logger.error("Error re-injecting the animations to the ROM!");
+          this.ModLoader.logger.error(error.message);
+        }
+      } catch (error) {
+        this.ModLoader.logger.error("Error copying MM jumps to animation buffer!");
+        this.ModLoader.logger.error(error.message);
+      } */
+    } catch (error) {
+      this.ModLoader.logger.error("Error reading Majora's Mask jump animation files!");
       this.ModLoader.logger.error(error.message);
     }
   }
@@ -410,17 +512,17 @@ class main implements IPlugin {
   /* menu bar stuff */
   @onViUpdate()
   onViUpdate() {
-    if(this.ModLoader.ImGui.beginMainMenuBar()) {
-      if(this.ModLoader.ImGui.beginMenu("Mods")) {
-        if(this.ModLoader.ImGui.beginMenu("MM Jumps")) {
+    if (this.ModLoader.ImGui.beginMainMenuBar()) {
+      if (this.ModLoader.ImGui.beginMenu("Mods")) {
+        if (this.ModLoader.ImGui.beginMenu("MM Jumps")) {
           this.addSlider("Default Frequency", "##mmjumps_default_slider", this.defaultWeight);
           this.addSlider("Front Flip Frequency", "##mmjumps_front_flip_slider", this.flipWeight);
           this.addSlider("Somersault Frequency", "##mmjumps_somersault_slider", this.somersaultWeight);
-          if(this.ModLoader.ImGui.checkbox("Sequential Mode", this.isSequentialMode)) {
+          if (this.ModLoader.ImGui.checkbox("Sequential Mode", this.isSequentialMode)) {
             this.currentJumpInSequence = 0;
             this.jumpNeedsUpdate = true;
           }
-          if(this.ModLoader.ImGui.menuItem("Save")) {
+          if (this.ModLoader.ImGui.menuItem("Save")) {
             try {
               let zz: zzdata = (this as any)['metadata']['configData'];
               this.createConfig(this.defaultWeight[0], this.flipWeight[0], this.somersaultWeight[0], this.isSequentialMode[0], zz.config_version, zz.config_file);
@@ -429,12 +531,12 @@ class main implements IPlugin {
               this.ModLoader.logger.error(error.message);
             }
           }
+
           
-          /*
           if(this.ModLoader.ImGui.menuItem("Open Debug Window")) {
             this.debugWindowOpen = true;
           }
-          */
+          
 
           this.ModLoader.ImGui.endMenu();
         }
@@ -443,20 +545,24 @@ class main implements IPlugin {
       this.ModLoader.ImGui.endMainMenuBar();
     }
 
-    /*
+    
     if(this.debugWindowOpen) {
       if(this.ModLoader.ImGui.begin("MM Jumps Debug", [this.debugWindowOpen])) {
         this.ModLoader.ImGui.text("Current Jump Selected: 0x" + this.getCurrentJumpString());
         this.ModLoader.ImGui.text("Current Link State: " + this.core.link.state);
+        this.ModLoader.ImGui.text("Jump Heap Location: 0x" + this.myAlloc.pointer.toString(16));
+        this.ModLoader.ImGui.text("Name Heap Location: 0x" + this.myNamePtr.toString(16));
+        this.ModLoader.ImGui.text("Jump Flip Heap Location: 0x" + this.jumpFlipDataPtr.toString(16));
+        this.ModLoader.ImGui.text("Jump Somersault Heap Location: 0x" + this.jumpSomersaultDataPtr.toString(16));
         this.ModLoader.ImGui.end();
       }
     }
-    */
+    
   }
 
   addSlider(menuItemName: string, sliderID: string, numberRef: number[]): void {
-    if(this.ModLoader.ImGui.beginMenu(menuItemName)) {
-      if(this.ModLoader.ImGui.sliderInt(sliderID, numberRef, SLIDER_RANGE.MIN, SLIDER_RANGE.MAX)) {
+    if (this.ModLoader.ImGui.beginMenu(menuItemName)) {
+      if (this.ModLoader.ImGui.sliderInt(sliderID, numberRef, SLIDER_RANGE.MIN, SLIDER_RANGE.MAX)) {
         this.jumpNeedsUpdate = true;
       }
       this.ModLoader.ImGui.endMenu();
