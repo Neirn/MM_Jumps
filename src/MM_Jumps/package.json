@@ -1,6 +1,6 @@
 {
   "name": "MM_Jumps",
-  "version": "1.0.9",
+  "version": "1.0.10",
   "description": "Import the flip and somersault jumps from Majora's Mask into Ocarina of Time",
   "credits": "denoflions",
   "main": "MM_Jumps.js",
@@ -14,7 +14,8 @@
     "jump_flip_anim": "animations/jump_front_flip.zdata",
     "land_flip_anim": "animations/land_front_flip.zdata",
     "jump_somersault_anim": "animations/jump_somersault.zdata",
-    "land_somersault_anim": "animations/land_somersault.zdata"
+    "land_somersault_anim": "animations/land_somersault.zdata",
+    "roll_sfx": "OOT_Link_Roll.ogg"
   },
   "modloader64_deps": {
     "Z64Lib": "https://github.com/hylian-modding/ML64-Z64Lib.git"

@@ -1,12 +1,14 @@
-import {IPlugin, IModLoaderAPI, ModLoaderEvents} from 'modloader64_api/IModLoaderAPI';
-import {EventHandler} from 'modloader64_api/EventHandler'
-import {IOOTCore, OotEvents, LinkState} from 'modloader64_api/OOT/OOTAPI';
-import {InjectCore} from 'modloader64_api/CoreInjection';
-import {Z64RomTools} from 'Z64Lib/API/Z64RomTools';
-import {Z64LibSupportedGames} from 'Z64Lib/API/Z64LibSupportedGames';
-import {onViUpdate} from 'modloader64_api/PluginLifecycle';
-import {readJSONSync, readFileSync, existsSync, writeFileSync} from 'fs-extra';
+import { IPlugin, IModLoaderAPI, ModLoaderEvents } from 'modloader64_api/IModLoaderAPI';
+import { EventHandler } from 'modloader64_api/EventHandler'
+import { IOOTCore, OotEvents, LinkState } from 'modloader64_api/OOT/OOTAPI';
+import { InjectCore } from 'modloader64_api/CoreInjection';
+import { Z64RomTools } from 'Z64Lib/API/Z64RomTools';
+import { Z64LibSupportedGames } from 'Z64Lib/API/Z64LibSupportedGames';
+import { onViUpdate } from 'modloader64_api/PluginLifecycle';
+import { readJSONSync, readFileSync, existsSync, writeFileSync } from 'fs-extra';
 import path from 'path';
+import zlib from 'zlib';
+import * as sf from 'modloader64_api/Sound/sfml_audio';
 
 class zzdata {
   config_version!: string;
@@ -15,6 +17,7 @@ class zzdata {
   land_flip_anim!: string;
   jump_somersault_anim!: string;
   land_somersault_anim!: string;
+  roll_sfx!: string;
 }
 
 interface mm_jumps_options {
@@ -58,7 +61,7 @@ const enum ANIM_LENGTHS {
   LAND_DEFAULT_FALL = 0x15,
   JUMP_FLIP = 0xD,
   LAND_FLIP = 0xD,
-  JUMP_SOMERSAULT =  0xE,
+  JUMP_SOMERSAULT = 0xE,
   LAND_SOMERSAULT = 0x10,
   LAND_DEFAULT_SHORT = 0x10,
   LAND_DEFAULT_SHORT_UNARMED = 0x10
@@ -99,7 +102,7 @@ class main implements IPlugin {
   isSequentialMode: boolean[] = [false];
   currentJumpInSequence: number = 0;
   debugWindowOpen = false;
-
+  queuedRoll!: { timer: number, sound: sf.Sound, isQueued: boolean, isInProgress: boolean };
 
   applyJumpSwap(animOffset: number) {
     let jumpLen: number;
@@ -112,7 +115,7 @@ class main implements IPlugin {
       case LINK_ANIMETION_OFFSETS.JUMP_FLIP:
         jumpLen = ANIM_LENGTHS.JUMP_FLIP;
         break;
-    
+
       default:
         /* Just play the regular flip animation if the parameter isn't one of the two jumps */
         animOffset = LINK_ANIMETION_OFFSETS.JUMP_REGULAR;
@@ -150,12 +153,12 @@ class main implements IPlugin {
         landLen = ANIM_LENGTHS.LAND_FLIP;
         landOffset = LINK_ANIMETION_OFFSETS.LAND_FLIP;
         break;
-    
+
       default:
         break;
     }
 
-    if(isMMJump) {
+    if (isMMJump) {
       fallLen = landLen;
       landShortLen = landLen;
       landShortUnarmedLen = landLen;
@@ -178,7 +181,7 @@ class main implements IPlugin {
 
     let rng: number = getRandomInt(total);
 
-    if(rng < this.somersaultWeight[0]) {
+    if (rng < this.somersaultWeight[0]) {
       return LINK_ANIMETION_OFFSETS.JUMP_SOMERSAULT;
     }
     else if (rng < this.somersaultWeight[0] + this.flipWeight[0]) {
@@ -188,7 +191,7 @@ class main implements IPlugin {
   }
 
   createConfig(defaultWeight: number, rollWeight: number, somerWeight: number, seqMode: boolean, configVersion: string, filePath: string): void {
-    writeFileSync(filePath, JSON.stringify({config_version: configVersion, default_jump_weight: defaultWeight, rolling_jump_weight: rollWeight, somersault_jump_weight: somerWeight, sequential_mode: seqMode} as mm_jumps_options, null, 5));
+    writeFileSync(filePath, JSON.stringify({ config_version: configVersion, default_jump_weight: defaultWeight, rolling_jump_weight: rollWeight, somersault_jump_weight: somerWeight, sequential_mode: seqMode } as mm_jumps_options, null, 5));
   }
 
   getCurrentJumpInMemory(): number {
@@ -216,10 +219,16 @@ class main implements IPlugin {
     let sequentialDefault: boolean = false;
 
     try {
+      this.queuedRoll = { timer: 0, sound: this.ModLoader.sound.loadSound(path.resolve(__dirname, zz.roll_sfx)), isInProgress: false, isQueued: false };
+    } catch (error) {
+      this.ModLoader.logger.error("Error loading rolling sound effect!");
+    }
+
+    try {
       let config: mm_jumps_options;
 
       /* default config file values */
-      if(!existsSync(zz.config_file)) {
+      if (!existsSync(zz.config_file)) {
         this.defaultWeight[0] = defaultDefault;
         this.flipWeight[0] = flipDefault;
         this.somersaultWeight[0] = somersaultDefault;
@@ -228,10 +237,10 @@ class main implements IPlugin {
       else {
         config = readJSONSync(zz.config_file);
 
-        if(!config.sequential_mode) {
+        if (!config.sequential_mode) {
           config.sequential_mode = false;
         }
-        
+
         /* Import settings when updating config file */
         if (config.config_version !== zz.config_version) {
           this.ModLoader.logger.info("Config file out of date! Attempting to update...");
@@ -250,7 +259,7 @@ class main implements IPlugin {
       this.flipWeight[0] = flipDefault;
       this.somersaultWeight[0] = somersaultDefault;
       this.isSequentialMode[0] = sequentialDefault;
-      if(existsSync(zz.config_file)) {
+      if (existsSync(zz.config_file)) {
         this.createConfig(this.defaultWeight[0], this.flipWeight[0], this.somersaultWeight[0], this.isSequentialMode[0], zz.config_version, zz.config_file);
       }
     }
@@ -262,40 +271,53 @@ class main implements IPlugin {
 
   postinit(): void { }
 
-  onTick(): void { 
-    if(this.loadSuccess) {
-      if(this.core.helper.isPaused()) {
+  onTick(): void {
+    if (this.loadSuccess) {
+      if (this.core.helper.isPaused()) {
+        if (!this.wasPaused) {
+          this.queuedRoll.isInProgress = (this.queuedRoll.sound.status === sf.SoundSourceStatus.Playing);
+          if (this.queuedRoll.isInProgress) {
+            this.queuedRoll.sound.pause();
+          }
+        }
+
         this.wasPaused = true;
         return;
       }
 
-      if(this.core.link.state === LinkState.BUSY || this.core.link.state === LinkState.SWIMMING) {
+      if (this.core.link.state === LinkState.BUSY || this.core.link.state === LinkState.SWIMMING) {
         this.jumpNeedsUpdate = true;
         return;
       }
-  
+
       // restore the animation if the game was paused in the middle of a jump
-      if(this.wasPaused) {
+      if (this.wasPaused) {
         this.applyJumpSwap(this.currentJump);
-        if(this.jumpInProgress) {
+        if (this.jumpInProgress) {
           this.applyLandingSwap(this.currentJump);
         }
+        if (this.queuedRoll.isInProgress)
+          this.queuedRoll.sound.play();
         this.wasPaused = false;
       }
 
       switch (this.core.link.get_anim_id()) {
-  
+
         case GAMEPLAY_KEEP_OFFSETS.ANIM_JUMP:
           /* Apply the correct landing animation to whatever jump is currently happening, queue jump update upon finishing landing */
-          if(!this.jumpInProgress) {
+          if (!this.jumpInProgress) {
             this.applyLandingSwap(this.currentJump);
             this.jumpInProgress = true;
             this.jumpNeedsUpdate = true;
-            if(this.isSequentialMode[0])
+            if (this.isSequentialMode[0])
               this.currentJumpInSequence = (this.currentJumpInSequence + 1) % 3;
+            if (this.currentJump === LINK_ANIMETION_OFFSETS.JUMP_FLIP) {
+              this.queuedRoll.isQueued = true;
+              this.queuedRoll.timer = 6;
+            }
           }
           break;
-  
+
         /* Don't update the jumping and landing animations while they're playing */
         case GAMEPLAY_KEEP_OFFSETS.ANIM_LAND:
         case GAMEPLAY_KEEP_OFFSETS.ANIM_LAND_SHORT:
@@ -304,12 +326,12 @@ class main implements IPlugin {
         case GAMEPLAY_KEEP_OFFSETS.ANIM_FALL_LAND_UNARMED:
         case GAMEPLAY_KEEP_OFFSETS.ANIM_NORMAL_LANDING_WAIT:
           break;
-      
+
         default:
 
           /* Choose next jump */
-          if(this.jumpNeedsUpdate) {
-            if(this.isSequentialMode[0]) {
+          if (this.jumpNeedsUpdate) {
+            if (this.isSequentialMode[0]) {
               switch (this.currentJumpInSequence) {
                 case 0:
                   this.currentJump = LINK_ANIMETION_OFFSETS.JUMP_REGULAR;
@@ -334,15 +356,23 @@ class main implements IPlugin {
             }
             this.jumpNeedsUpdate = false;
           }
-  
-          if(this.currentLanding !== LINK_ANIMETION_OFFSETS.LAND_REGULAR) {
+
+          if (this.currentLanding !== LINK_ANIMETION_OFFSETS.LAND_REGULAR) {
             /* fix landing for backflips, ledge drops, etc when MM Jump not in progress */
             this.applyLandingSwap(LINK_ANIMETION_OFFSETS.JUMP_REGULAR);
           }
-  
+
           this.jumpInProgress = false;
-  
+
           break;
+      }
+
+      if (this.queuedRoll.isQueued) {
+        if (this.queuedRoll.timer <= 0) {
+          this.queuedRoll.sound.play();
+          this.queuedRoll.isInProgress = true;
+          this.queuedRoll.isQueued = false;
+        } else this.queuedRoll.timer--;
       }
     }
   }
@@ -409,17 +439,17 @@ class main implements IPlugin {
   /* menu bar stuff */
   @onViUpdate()
   onViUpdate() {
-    if(this.ModLoader.ImGui.beginMainMenuBar()) {
-      if(this.ModLoader.ImGui.beginMenu("Mods")) {
-        if(this.ModLoader.ImGui.beginMenu("MM Jumps")) {
+    if (this.ModLoader.ImGui.beginMainMenuBar()) {
+      if (this.ModLoader.ImGui.beginMenu("Mods")) {
+        if (this.ModLoader.ImGui.beginMenu("MM Jumps")) {
           this.addSlider("Default Frequency", "##mmjumps_default_slider", this.defaultWeight);
           this.addSlider("Front Flip Frequency", "##mmjumps_front_flip_slider", this.flipWeight);
           this.addSlider("Somersault Frequency", "##mmjumps_somersault_slider", this.somersaultWeight);
-          if(this.ModLoader.ImGui.checkbox("Sequential Mode", this.isSequentialMode)) {
+          if (this.ModLoader.ImGui.checkbox("Sequential Mode", this.isSequentialMode)) {
             this.currentJumpInSequence = 0;
             this.jumpNeedsUpdate = true;
           }
-          if(this.ModLoader.ImGui.menuItem("Save")) {
+          if (this.ModLoader.ImGui.menuItem("Save")) {
             try {
               let zz: zzdata = (this as any)['metadata']['configData'];
               this.createConfig(this.defaultWeight[0], this.flipWeight[0], this.somersaultWeight[0], this.isSequentialMode[0], zz.config_version, zz.config_file);
@@ -428,7 +458,7 @@ class main implements IPlugin {
               this.ModLoader.logger.error(error.message);
             }
           }
-          
+
           /*
           if(this.ModLoader.ImGui.menuItem("Open Debug Window")) {
             this.debugWindowOpen = true;
@@ -454,8 +484,8 @@ class main implements IPlugin {
   }
 
   addSlider(menuItemName: string, sliderID: string, numberRef: number[]): void {
-    if(this.ModLoader.ImGui.beginMenu(menuItemName)) {
-      if(this.ModLoader.ImGui.sliderInt(sliderID, numberRef, SLIDER_RANGE.MIN, SLIDER_RANGE.MAX)) {
+    if (this.ModLoader.ImGui.beginMenu(menuItemName)) {
+      if (this.ModLoader.ImGui.sliderInt(sliderID, numberRef, SLIDER_RANGE.MIN, SLIDER_RANGE.MAX)) {
         this.jumpNeedsUpdate = true;
       }
       this.ModLoader.ImGui.endMenu();
