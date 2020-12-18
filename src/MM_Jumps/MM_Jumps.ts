@@ -7,8 +7,7 @@ import { Z64LibSupportedGames } from 'Z64Lib/API/Z64LibSupportedGames';
 import { onViUpdate } from 'modloader64_api/PluginLifecycle';
 import { readJSONSync, readFileSync, existsSync, writeFileSync } from 'fs-extra';
 import path from 'path';
-import zlib from 'zlib';
-import * as sf from 'modloader64_api/Sound/sfml_audio';
+import { Sound, SoundSourceStatus } from 'modloader64_api/Sound/sfml_audio';
 
 class zzdata {
   config_version!: string;
@@ -102,7 +101,7 @@ class main implements IPlugin {
   isSequentialMode: boolean[] = [false];
   currentJumpInSequence: number = 0;
   debugWindowOpen = false;
-  queuedRoll!: { timer: number, sound: sf.Sound, isQueued: boolean, isInProgress: boolean };
+  queuedRoll!: { timer: number, sound: Sound, isQueued: boolean, isInProgress: boolean };
 
   applyJumpSwap(animOffset: number) {
     let jumpLen: number;
@@ -275,7 +274,7 @@ class main implements IPlugin {
     if (this.loadSuccess) {
       if (this.core.helper.isPaused()) {
         if (!this.wasPaused) {
-          this.queuedRoll.isInProgress = (this.queuedRoll.sound.status === sf.SoundSourceStatus.Playing);
+          this.queuedRoll.isInProgress = (this.queuedRoll.sound.status === SoundSourceStatus.Playing);
           if (this.queuedRoll.isInProgress) {
             this.queuedRoll.sound.pause();
           }
