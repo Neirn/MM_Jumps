@@ -284,8 +284,16 @@ class main implements IPlugin {
         return;
       }
 
-      if (this.core.link.state === LinkState.BUSY || this.core.link.state === LinkState.SWIMMING) {
+      if (this.core.link.state === LinkState.BUSY) {
         this.jumpNeedsUpdate = true;
+        return;
+      }
+
+      if(this.core.link.state === LinkState.SWIMMING) {
+        this.jumpNeedsUpdate = true;
+        if(this.currentLanding !== LINK_ANIMETION_OFFSETS.LAND_REGULAR) {
+          this.applyLandingSwap(LINK_ANIMETION_OFFSETS.LAND_REGULAR);
+        }
         return;
       }
 
