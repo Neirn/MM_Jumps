@@ -9,7 +9,7 @@
   "license": "GPL-3.0",
   "core": "OcarinaofTime",
   "configData": {
-    "config_version": "1.0.1",
+    "config_version": "1.0.2",
     "config_file": "./mm_jumps_config.json",
     "jump_flip_anim": "animations/jump_front_flip.zdata",
     "land_flip_anim": "animations/land_front_flip.zdata",

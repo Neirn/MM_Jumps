@@ -25,6 +25,7 @@ interface mm_jumps_options {
   rolling_jump_weight: number;
   somersault_jump_weight: number;
   sequential_mode?: boolean;
+  use_rolling_sound?: boolean
 }
 
 const enum LINK_ANIMETION_OFFSETS {
@@ -99,6 +100,7 @@ class main implements IPlugin {
   loadSuccess: boolean = false;
   jumpNeedsUpdate: boolean = true;
   isSequentialMode: boolean[] = [false];
+  useRollingSound: boolean[] = [true];
   currentJumpInSequence: number = 0;
   debugWindowOpen = false;
   queuedRoll!: { timer: number, sound: Sound, isQueued: boolean, isInProgress: boolean };
@@ -189,8 +191,8 @@ class main implements IPlugin {
     else return LINK_ANIMETION_OFFSETS.JUMP_REGULAR;
   }
 
-  createConfig(defaultWeight: number, rollWeight: number, somerWeight: number, seqMode: boolean, configVersion: string, filePath: string): void {
-    writeFileSync(filePath, JSON.stringify({ config_version: configVersion, default_jump_weight: defaultWeight, rolling_jump_weight: rollWeight, somersault_jump_weight: somerWeight, sequential_mode: seqMode } as mm_jumps_options, null, 5));
+  createConfig(defaultWeight: number, rollWeight: number, somerWeight: number, seqMode: boolean, rollSfx: boolean, configVersion: string, filePath: string): void {
+    writeFileSync(filePath, JSON.stringify({ config_version: configVersion, default_jump_weight: defaultWeight, rolling_jump_weight: rollWeight, somersault_jump_weight: somerWeight, sequential_mode: seqMode, use_rolling_sound: rollSfx } as mm_jumps_options, null, 6));
   }
 
   getCurrentJumpInMemory(): number {
@@ -216,11 +218,13 @@ class main implements IPlugin {
     let flipDefault: number = 33;
     let somersaultDefault: number = 33;
     let sequentialDefault: boolean = false;
+    let rollingSoundDefault: boolean = true;
 
     try {
       this.queuedRoll = { timer: 0, sound: this.ModLoader.sound.loadSound(path.resolve(__dirname, zz.roll_sfx)), isInProgress: false, isQueued: false };
     } catch (error) {
       this.ModLoader.logger.error("Error loading rolling sound effect!");
+      this.useRollingSound[0] = false;
     }
 
     try {
@@ -240,16 +244,21 @@ class main implements IPlugin {
           config.sequential_mode = false;
         }
 
+        if(typeof config.use_rolling_sound === "undefined") {
+          config.use_rolling_sound = true;
+        }
+
         /* Import settings when updating config file */
         if (config.config_version !== zz.config_version) {
           this.ModLoader.logger.info("Config file out of date! Attempting to update...");
-          this.createConfig(config.default_jump_weight, config.rolling_jump_weight, config.somersault_jump_weight, config.sequential_mode, zz.config_version, zz.config_file);
+          this.createConfig(config.default_jump_weight, config.rolling_jump_weight, config.somersault_jump_weight, config.sequential_mode, config.use_rolling_sound, zz.config_version, zz.config_file);
         }
 
         this.defaultWeight[0] = config.default_jump_weight;
         this.flipWeight[0] = config.rolling_jump_weight;
         this.somersaultWeight[0] = config.somersault_jump_weight;
         this.isSequentialMode[0] = config.sequential_mode;
+        this.useRollingSound[0] = config.use_rolling_sound;
       }
     } catch (error) {
       this.ModLoader.logger.error(error.name + ": " + error.message)
@@ -258,8 +267,9 @@ class main implements IPlugin {
       this.flipWeight[0] = flipDefault;
       this.somersaultWeight[0] = somersaultDefault;
       this.isSequentialMode[0] = sequentialDefault;
+      this.useRollingSound[0] = rollingSoundDefault;
       if (existsSync(zz.config_file)) {
-        this.createConfig(this.defaultWeight[0], this.flipWeight[0], this.somersaultWeight[0], this.isSequentialMode[0], zz.config_version, zz.config_file);
+        this.createConfig(this.defaultWeight[0], this.flipWeight[0], this.somersaultWeight[0], this.isSequentialMode[0], this.useRollingSound[0], zz.config_version, zz.config_file);
       }
     }
 
@@ -289,9 +299,9 @@ class main implements IPlugin {
         return;
       }
 
-      if(this.core.link.state === LinkState.SWIMMING) {
+      if (this.core.link.state === LinkState.SWIMMING) {
         this.jumpNeedsUpdate = true;
-        if(this.currentLanding !== LINK_ANIMETION_OFFSETS.LAND_REGULAR) {
+        if (this.currentLanding !== LINK_ANIMETION_OFFSETS.LAND_REGULAR) {
           this.applyLandingSwap(LINK_ANIMETION_OFFSETS.LAND_REGULAR);
         }
         return;
@@ -318,7 +328,7 @@ class main implements IPlugin {
             this.jumpNeedsUpdate = true;
             if (this.isSequentialMode[0])
               this.currentJumpInSequence = (this.currentJumpInSequence + 1) % 3;
-            if (this.currentJump === LINK_ANIMETION_OFFSETS.JUMP_FLIP) {
+            if (this.useRollingSound[0] && this.currentJump === LINK_ANIMETION_OFFSETS.JUMP_FLIP) {
               this.queuedRoll.isQueued = true;
               this.queuedRoll.timer = 6;
             }
@@ -456,10 +466,11 @@ class main implements IPlugin {
             this.currentJumpInSequence = 0;
             this.jumpNeedsUpdate = true;
           }
+          this.ModLoader.ImGui.checkbox("Rolling jump SFX", this.useRollingSound);
           if (this.ModLoader.ImGui.menuItem("Save")) {
             try {
               let zz: zzdata = (this as any)['metadata']['configData'];
-              this.createConfig(this.defaultWeight[0], this.flipWeight[0], this.somersaultWeight[0], this.isSequentialMode[0], zz.config_version, zz.config_file);
+              this.createConfig(this.defaultWeight[0], this.flipWeight[0], this.somersaultWeight[0], this.isSequentialMode[0], this.useRollingSound[0], zz.config_version, zz.config_file);
             } catch (error) {
               this.ModLoader.logger.error("There was an error saving the changes to the config file!")
               this.ModLoader.logger.error(error.message);
