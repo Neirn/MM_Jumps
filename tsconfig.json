@@ -18,11 +18,9 @@
       ],
       "@MM_Jumps/*": [
         "./src/MM_Jumps/*"
-      ],
-      "Z64Lib/*": [
-        "libs/Z64Lib/*"
       ]
-    }
+    },
+    "noImplicitAny": false
   },
   "include": [
     "src/**/*.ts",
@@ -30,7 +28,9 @@
     "mods/**/*.ts",
     "cores/**/*.ts",
     "bin/paker.ts",
-    "tools/**/*.ts"
+    "tools/**/*.ts",
+    "src/modloader/consoles/mupen/resources/test.js",
+    "API/src/IAnalyticsManager.ts"
   ],
   "exclude": [
     "node_modules",

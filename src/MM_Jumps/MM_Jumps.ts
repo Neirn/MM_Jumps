@@ -7,7 +7,8 @@ import { Z64LibSupportedGames } from 'Z64Lib/API/Z64LibSupportedGames';
 import { onViUpdate } from 'modloader64_api/PluginLifecycle';
 import { readJSONSync, readFileSync, existsSync, writeFileSync } from 'fs-extra';
 import path from 'path';
-import { Sound, SoundSourceStatus } from 'modloader64_api/Sound/sfml_audio';
+import { Command } from 'modloader64_api/OOT/ICommandBuffer';
+import { Z64OnlineEvents } from './OotoAPI';
 
 class zzdata {
   config_version!: string;
@@ -16,7 +17,6 @@ class zzdata {
   land_flip_anim!: string;
   jump_somersault_anim!: string;
   land_somersault_anim!: string;
-  roll_sfx!: string;
 }
 
 interface mm_jumps_options {
@@ -42,6 +42,7 @@ const enum LINK_ANIMETION_OFFSETS {
 }
 
 const GAMEPLAY_KEEP_PTR: number = 0x8016A66C;
+const NA_SE_PL_ROLL = 0x003C;
 
 const enum GAMEPLAY_KEEP_OFFSETS {
   ANIM_JUMP = 0x3148,
@@ -103,7 +104,11 @@ class main implements IPlugin {
   useRollingSound: boolean[] = [true];
   currentJumpInSequence: number = 0;
   debugWindowOpen = false;
-  queuedRoll!: { timer: number, sound: Sound, isQueued: boolean, isInProgress: boolean };
+  debugTxtBox = [""];
+  jumpFlipBuf!: Buffer;
+  jumpSomerBuf!: Buffer;
+  landFlipBuf!: Buffer;
+  landSomerBuf!: Buffer;
 
   applyJumpSwap(animOffset: number) {
     let jumpLen: number;
@@ -221,13 +226,6 @@ class main implements IPlugin {
     let rollingSoundDefault: boolean = true;
 
     try {
-      this.queuedRoll = { timer: 0, sound: this.ModLoader.sound.loadSound(path.resolve(__dirname, zz.roll_sfx)), isInProgress: false, isQueued: false };
-    } catch (error) {
-      this.ModLoader.logger.error("Error loading rolling sound effect!");
-      this.useRollingSound[0] = false;
-    }
-
-    try {
       let config: mm_jumps_options;
 
       /* default config file values */
@@ -244,7 +242,7 @@ class main implements IPlugin {
           config.sequential_mode = false;
         }
 
-        if(typeof config.use_rolling_sound === "undefined") {
+        if (typeof config.use_rolling_sound === "undefined") {
           config.use_rolling_sound = true;
         }
 
@@ -283,13 +281,6 @@ class main implements IPlugin {
   onTick(): void {
     if (this.loadSuccess) {
       if (this.core.helper.isPaused()) {
-        if (!this.wasPaused) {
-          this.queuedRoll.isInProgress = (this.queuedRoll.sound.status === SoundSourceStatus.Playing);
-          if (this.queuedRoll.isInProgress) {
-            this.queuedRoll.sound.pause();
-          }
-        }
-
         this.wasPaused = true;
         return;
       }
@@ -313,8 +304,6 @@ class main implements IPlugin {
         if (this.jumpInProgress) {
           this.applyLandingSwap(this.currentJump);
         }
-        if (this.queuedRoll.isInProgress)
-          this.queuedRoll.sound.play();
         this.wasPaused = false;
       }
 
@@ -329,8 +318,9 @@ class main implements IPlugin {
             if (this.isSequentialMode[0])
               this.currentJumpInSequence = (this.currentJumpInSequence + 1) % 3;
             if (this.useRollingSound[0] && this.currentJump === LINK_ANIMETION_OFFSETS.JUMP_FLIP) {
-              this.queuedRoll.isQueued = true;
-              this.queuedRoll.timer = 6;
+              this.ModLoader.utils.setTimeoutFrames(() => {
+                this.core.commandBuffer.runCommand(Command.PLAY_SOUND, 0x003C);
+              }, 1)
             }
           }
           break;
@@ -383,14 +373,6 @@ class main implements IPlugin {
 
           break;
       }
-
-      if (this.queuedRoll.isQueued) {
-        if (this.queuedRoll.timer <= 0) {
-          this.queuedRoll.sound.play();
-          this.queuedRoll.isInProgress = true;
-          this.queuedRoll.isQueued = false;
-        } else this.queuedRoll.timer--;
-      }
     }
   }
 
@@ -411,6 +393,10 @@ class main implements IPlugin {
             let landFlipBuff: Buffer = readFileSync(path.resolve(path.join(__dirname, zz.land_flip_anim)));
             let jumpSomerBuff: Buffer = readFileSync(path.resolve(path.join(__dirname, zz.jump_somersault_anim)));
             let landSomerBuff: Buffer = readFileSync(path.resolve(path.join(__dirname, zz.land_somersault_anim)));
+            this.jumpFlipBuf = jumpFlipBuff;
+            this.landFlipBuf = landFlipBuff;
+            this.jumpSomerBuf = jumpSomerBuff;
+            this.landSomerBuf = landSomerBuff;
             try {
               jumpFlipBuff.copy(animationData, LINK_ANIMETION_OFFSETS.JUMP_FLIP);
               landFlipBuff.copy(animationData, LINK_ANIMETION_OFFSETS.LAND_FLIP);
@@ -453,6 +439,14 @@ class main implements IPlugin {
     this.currentJump = LINK_ANIMETION_OFFSETS.JUMP_REGULAR;
   }
 
+  @EventHandler(Z64OnlineEvents.CUSTOM_ANIMATION_BANK_EQUIPPED)
+  reapplyAnimations(offset: number) {
+    this.ModLoader.rom.romWriteBuffer(offset + LINK_ANIMETION_OFFSETS.JUMP_FLIP, this.jumpFlipBuf);
+    this.ModLoader.rom.romWriteBuffer(offset + LINK_ANIMETION_OFFSETS.LAND_FLIP, this.landFlipBuf);
+    this.ModLoader.rom.romWriteBuffer(offset + LINK_ANIMETION_OFFSETS.JUMP_SOMERSAULT, this.jumpSomerBuf);
+    this.ModLoader.rom.romWriteBuffer(offset + LINK_ANIMETION_OFFSETS.LAND_SOMERSAULT, this.landSomerBuf);
+  }
+
   /* menu bar stuff */
   @onViUpdate()
   onViUpdate() {
@@ -478,7 +472,7 @@ class main implements IPlugin {
           }
 
           /*
-          if(this.ModLoader.ImGui.menuItem("Open Debug Window")) {
+          if (this.ModLoader.ImGui.menuItem("Open Debug Window")) {
             this.debugWindowOpen = true;
           }
           */
@@ -491,14 +485,26 @@ class main implements IPlugin {
     }
 
     /*
-    if(this.debugWindowOpen) {
-      if(this.ModLoader.ImGui.begin("MM Jumps Debug", [this.debugWindowOpen])) {
+    if (this.debugWindowOpen) {
+      if (this.ModLoader.ImGui.begin("MM Jumps Debug", [this.debugWindowOpen])) {
         this.ModLoader.ImGui.text("Current Jump Selected: 0x" + this.getCurrentJumpString());
         this.ModLoader.ImGui.text("Current Link State: " + this.core.link.state);
-        this.ModLoader.ImGui.end();
+        this.ModLoader.ImGui.inputText("Sound ID", this.debugTxtBox);
+        if (this.ModLoader.ImGui.button("Play Sound")) {
+          this.ModLoader.utils.setTimeoutFrames(() => {
+            try {
+              let input = parseInt(this.debugTxtBox[0], 16);
+              this.core.commandBuffer.runCommand(Command.PLAY_SOUND, input);
+            } catch (error) {
+              this.ModLoader.logger.error(error.message);
+            }
+          }, 1);
+        }
       }
+      this.ModLoader.ImGui.end();
     }
     */
+
   }
 
   addSlider(menuItemName: string, sliderID: string, numberRef: number[]): void {

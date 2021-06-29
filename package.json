@@ -1,6 +1,6 @@
 {
   "name": "MM_Jumps",
-  "version": "1.0.11",
+  "version": "1.1.0",
   "description": "",
   "main": "index.js",
   "scripts": {
@@ -8,8 +8,5 @@
   },
   "keywords": [],
   "author": "",
-  "license": "ISC",
-  "modloader64_deps": {
-    "Z64Lib": "https://github.com/hylian-modding/ML64-Z64Lib"
-  }
+  "license": "ISC"
 }
