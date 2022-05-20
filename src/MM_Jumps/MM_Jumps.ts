@@ -1,14 +1,17 @@
 import { IPlugin, IModLoaderAPI, ModLoaderEvents } from 'modloader64_api/IModLoaderAPI';
 import { EventHandler } from 'modloader64_api/EventHandler'
-import { IOOTCore, OotEvents, LinkState } from 'modloader64_api/OOT/OOTAPI';
+import { OotEvents } from 'Z64Lib/API/OoT/OOTAPI';
 import { InjectCore } from 'modloader64_api/CoreInjection';
-import { Z64RomTools } from 'Z64Lib/API/Z64RomTools';
-import { Z64LibSupportedGames } from 'Z64Lib/API/Z64LibSupportedGames';
+import { Z64RomTools } from 'Z64Lib/API/Utilities/Z64RomTools';
+import { IZ64Main } from 'Z64Lib/API/Common/IZ64Main'
+import { Z64_GAME } from 'Z64Lib/src/Common/types/GameAliases';
 import { onViUpdate } from 'modloader64_api/PluginLifecycle';
 import { readJSONSync, readFileSync, existsSync, writeFileSync } from 'fs-extra';
 import path from 'path';
-import { Command } from 'modloader64_api/OOT/ICommandBuffer';
-import { Z64OnlineEvents } from './OotoAPI';
+import { Command } from 'Z64Lib/API/Common/ICommandBuffer';
+import { Z64OnlineEvents } from './Z64OAPI';
+import { LinkState } from 'Z64Lib/API/Common/Z64API';
+import { Z64LibSupportedGames } from 'Z64Lib/API/Utilities/Z64LibSupportedGames';
 
 class zzdata {
   config_version!: string;
@@ -90,7 +93,8 @@ class main implements IPlugin {
   ModLoader!: IModLoaderAPI;
   pluginName?: string | undefined;
   @InjectCore()
-  core!: IOOTCore;
+  core!: IZ64Main; //Object for Z64 game data
+  game!: Z64LibSupportedGames; //Loaded Game
   defaultWeight: number[] = [0];
   flipWeight: number[] = [0];
   somersaultWeight: number[] = [0];
@@ -213,9 +217,24 @@ class main implements IPlugin {
     return this.getCurrentJumpInMemory() === this.currentJump;
   }
 
-  preinit(): void { }
+  preinit(): void {
+    switch (Z64_GAME) { //Decide what mod data to initialize based on loaded Z64 Game
+      case Z64LibSupportedGames.OCARINA_OF_TIME:
+          this.init = this.init_oot;
+          this.onTick = this.onTick_oot;
+          break;
+      case Z64LibSupportedGames.DEBUG_OF_TIME:
+          // do nothing
+          break;
+      case Z64LibSupportedGames.MAJORAS_MASK:
+          // do nothing
+          break;
+  }
+  }
 
-  init(): void {
+  init(): void { }
+
+  init_oot(): void {
     let zz: zzdata = (this as any)['metadata']['configData'];
 
     /* Default chances of each jump */
@@ -258,7 +277,7 @@ class main implements IPlugin {
         this.isSequentialMode[0] = config.sequential_mode;
         this.useRollingSound[0] = config.use_rolling_sound;
       }
-    } catch (error) {
+    } catch (error: any) {
       this.ModLoader.logger.error(error.name + ": " + error.message)
       this.ModLoader.logger.warn("Error reading config file! Loading default values...")
       this.defaultWeight[0] = defaultDefault;
@@ -278,19 +297,21 @@ class main implements IPlugin {
 
   postinit(): void { }
 
-  onTick(): void {
+  onTick(frame?: number): void { }
+
+  onTick_oot(frame?: number): void {
     if (this.loadSuccess) {
-      if (this.core.helper.isPaused()) {
+      if (this.core.OOT!.helper.isPaused()) {
         this.wasPaused = true;
         return;
       }
 
-      if (this.core.link.state === LinkState.BUSY) {
+      if (this.core.OOT!.link.state === LinkState.BUSY) {
         this.jumpNeedsUpdate = true;
         return;
       }
 
-      if (this.core.link.state === LinkState.SWIMMING) {
+      if (this.core.OOT!.link.state === LinkState.SWIMMING) {
         this.jumpNeedsUpdate = true;
         if (this.currentLanding !== LINK_ANIMETION_OFFSETS.LAND_REGULAR) {
           this.applyLandingSwap(LINK_ANIMETION_OFFSETS.LAND_REGULAR);
@@ -307,7 +328,7 @@ class main implements IPlugin {
         this.wasPaused = false;
       }
 
-      switch (this.core.link.get_anim_id()) {
+      switch (this.core.OOT!.link.get_anim_id()) {
 
         case GAMEPLAY_KEEP_OFFSETS.ANIM_JUMP:
           /* Apply the correct landing animation to whatever jump is currently happening, queue jump update upon finishing landing */
@@ -319,7 +340,7 @@ class main implements IPlugin {
               this.currentJumpInSequence = (this.currentJumpInSequence + 1) % 3;
             if (this.useRollingSound[0] && this.currentJump === LINK_ANIMETION_OFFSETS.JUMP_FLIP) {
               this.ModLoader.utils.setTimeoutFrames(() => {
-                this.core.commandBuffer.runCommand(Command.PLAY_SOUND, 0x003C);
+                this.core.OOT!.commandBuffer.runCommand(Command.PLAYSOUND, NA_SE_PL_ROLL);
               }, 1)
             }
           }
@@ -406,27 +427,27 @@ class main implements IPlugin {
                 tools.recompressDMAFileIntoRom(evt.rom, linkAnimdma, animationData);
                 this.ModLoader.logger.info("Majora's Mask jump animations loaded!");
                 this.loadSuccess = true;
-              } catch (error) {
+              } catch (error: any) {
                 this.ModLoader.logger.error("Error re-injecting the animations to the ROM!");
                 this.ModLoader.logger.error(error.message);
               }
-            } catch (error) {
+            } catch (error: any) {
               this.ModLoader.logger.error("Error copying MM jumps to animation buffer!");
               this.ModLoader.logger.error(error.message);
             }
-          } catch (error) {
+          } catch (error: any) {
             this.ModLoader.logger.error("Error reading Majora's Mask jump animation files!");
             this.ModLoader.logger.error(error.message);
           }
-        } catch (error) {
+        } catch (error: any) {
           this.ModLoader.logger.error("Error extracting Link's animations from the ROM!")
           this.ModLoader.logger.error(error.message);
         }
-      } catch (error) {
+      } catch (error: any) {
         this.ModLoader.logger.error("Z64Lib error! Is Z64Lib outdated?");
         this.ModLoader.logger.error(error.message);
       }
-    } catch (error) {
+    } catch (error: any) {
       this.ModLoader.logger.error("Error loading metadata from package.json!");
       this.ModLoader.logger.error(error.message);
     }
@@ -449,7 +470,9 @@ class main implements IPlugin {
 
   /* menu bar stuff */
   @onViUpdate()
-  onViUpdate() {
+  onViUpdate() { }
+
+  onViUpdate_oot() {
     if (this.ModLoader.ImGui.beginMainMenuBar()) {
       if (this.ModLoader.ImGui.beginMenu("Mods")) {
         if (this.ModLoader.ImGui.beginMenu("MM Jumps")) {
@@ -465,7 +488,7 @@ class main implements IPlugin {
             try {
               let zz: zzdata = (this as any)['metadata']['configData'];
               this.createConfig(this.defaultWeight[0], this.flipWeight[0], this.somersaultWeight[0], this.isSequentialMode[0], this.useRollingSound[0], zz.config_version, zz.config_file);
-            } catch (error) {
+            } catch (error: any) {
               this.ModLoader.logger.error("There was an error saving the changes to the config file!")
               this.ModLoader.logger.error(error.message);
             }
@@ -495,7 +518,7 @@ class main implements IPlugin {
             try {
               let input = parseInt(this.debugTxtBox[0], 16);
               this.core.commandBuffer.runCommand(Command.PLAY_SOUND, input);
-            } catch (error) {
+            } catch (error: any) {
               this.ModLoader.logger.error(error.message);
             }
           }, 1);

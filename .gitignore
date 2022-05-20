@@ -1,5 +1,10 @@
+build/
 libs/
-external_cores/
 node_modules/
 dist/
-build/
+src/OotOnline.pak
+src/cheatmenu.pak
+src/vanillamizer.bps
+external_cores/
+cores/
+modloader64-config.json
