@@ -5,7 +5,7 @@ import { InjectCore } from 'modloader64_api/CoreInjection';
 import { Z64RomTools } from 'Z64Lib/API/Utilities/Z64RomTools';
 import { IZ64Main } from 'Z64Lib/API/Common/IZ64Main'
 import { Z64_GAME } from 'Z64Lib/src/Common/types/GameAliases';
-import { onViUpdate } from 'modloader64_api/PluginLifecycle';
+import { Init, onTick, onViUpdate, Postinit, Preinit } from 'modloader64_api/PluginLifecycle';
 import { readJSONSync, readFileSync, existsSync, writeFileSync } from 'fs-extra';
 import path from 'path';
 import { Command } from 'Z64Lib/API/Common/ICommandBuffer';
@@ -95,6 +95,9 @@ class main implements IPlugin {
   @InjectCore()
   core!: IZ64Main; //Object for Z64 game data
   game!: Z64LibSupportedGames; //Loaded Game
+  isOoT: boolean = false; //Game Flags
+  isOoTDebug: boolean = false;
+  isMM: boolean = false;
   defaultWeight: number[] = [0];
   flipWeight: number[] = [0];
   somersaultWeight: number[] = [0];
@@ -113,6 +116,18 @@ class main implements IPlugin {
   jumpSomerBuf!: Buffer;
   landFlipBuf!: Buffer;
   landSomerBuf!: Buffer;
+
+  private Init_OOT() { //Setup for OoT specific data
+    this.isOoT = true;
+  }
+
+  private Init_OOTDEBUG() { //Setup for OoT specific data
+    this.isOoTDebug = true;
+  }
+
+  private Init_MM() { //Setup for MM specific data
+    this.isMM = true;
+  }
 
   applyJumpSwap(animOffset: number) {
     let jumpLen: number;
@@ -217,26 +232,23 @@ class main implements IPlugin {
     return this.getCurrentJumpInMemory() === this.currentJump;
   }
 
+  @Preinit() // Runs once immediately before the emulator is initialized
   preinit(): void {
     switch (Z64_GAME) { //Decide what mod data to initialize based on loaded Z64 Game
       case Z64LibSupportedGames.OCARINA_OF_TIME:
-          this.init = this.init_oot;
-          this.onTick = this.onTick_oot;
-          this.onRomPatchedPost = this.onRomPatchedPost_oot;
-          this.reapplyAnimations = this.reapplyAnimations_functional;
-          break;
+        this.Init_OOT();
+        break;
       case Z64LibSupportedGames.DEBUG_OF_TIME:
-          // do nothing
-          break;
+        this.Init_OOTDEBUG();
+        break;
       case Z64LibSupportedGames.MAJORAS_MASK:
-          // do nothing
-          break;
-  }
+        this.Init_MM();
+        break;
+    }
   }
 
-  init(): void { }
-
-  init_oot(): void {
+  @Init()
+  init(): void {
     let zz: zzdata = (this as any)['metadata']['configData'];
 
     /* Default chances of each jump */
@@ -297,11 +309,14 @@ class main implements IPlugin {
     this.currentLanding = LINK_ANIMETION_OFFSETS.LAND_REGULAR;
   }
 
+  @Postinit()
   postinit(): void { }
 
-  onTick(frame?: number): void { }
+  @onTick()
+  onTick(frame?: number): void {
 
-  onTick_oot(frame?: number): void {
+    if (!this.isOoT) return;
+
     if (this.loadSuccess) {
       if (this.core.OOT!.helper.isPaused()) {
         this.wasPaused = true;
@@ -400,9 +415,10 @@ class main implements IPlugin {
   }
 
   @EventHandler(ModLoaderEvents.ON_ROM_PATCHED_POST)
-  onRomPatchedPost(evt: any) { }
+  onRomPatchedPost(evt: any): void {
 
-  onRomPatchedPost_oot(evt: any): void {
+    if (!this.isOoT) return;
+
     let linkAnimdma: number = 0x7;
 
     this.ModLoader.logger.info("Loading Majora's Mask Jump animations...");
@@ -465,9 +481,9 @@ class main implements IPlugin {
   }
 
   @EventHandler(Z64OnlineEvents.CUSTOM_ANIMATION_BANK_EQUIPPED)
-  reapplyAnimations(offset: number) { }
+  reapplyAnimations(offset: number) {
+    if (!this.isOoT) return;
 
-  reapplyAnimations_functional(offset: number) {
     this.ModLoader.rom.romWriteBuffer(offset + LINK_ANIMETION_OFFSETS.JUMP_FLIP, this.jumpFlipBuf);
     this.ModLoader.rom.romWriteBuffer(offset + LINK_ANIMETION_OFFSETS.LAND_FLIP, this.landFlipBuf);
     this.ModLoader.rom.romWriteBuffer(offset + LINK_ANIMETION_OFFSETS.JUMP_SOMERSAULT, this.jumpSomerBuf);
@@ -476,9 +492,9 @@ class main implements IPlugin {
 
   /* menu bar stuff */
   @onViUpdate()
-  onViUpdate() { }
+  onViUpdate() {
+    if (!this.isOoT) return;
 
-  onViUpdate_oot() {
     if (this.ModLoader.ImGui.beginMainMenuBar()) {
       if (this.ModLoader.ImGui.beginMenu("Mods")) {
         if (this.ModLoader.ImGui.beginMenu("MM Jumps")) {

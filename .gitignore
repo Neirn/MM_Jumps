@@ -7,3 +7,4 @@ src/vanillamizer.bps
 external_cores/
 cores/
 modloader64-config.json
+*.bps
