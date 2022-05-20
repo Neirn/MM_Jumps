@@ -2,8 +2,7 @@ build/
 libs/
 node_modules/
 dist/
-src/OotOnline.pak
-src/cheatmenu.pak
+src/*.pak
 src/vanillamizer.bps
 external_cores/
 cores/

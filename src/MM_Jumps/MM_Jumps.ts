@@ -222,6 +222,8 @@ class main implements IPlugin {
       case Z64LibSupportedGames.OCARINA_OF_TIME:
           this.init = this.init_oot;
           this.onTick = this.onTick_oot;
+          this.onRomPatchedPost = this.onRomPatchedPost_oot;
+          this.reapplyAnimations = this.reapplyAnimations_functional;
           break;
       case Z64LibSupportedGames.DEBUG_OF_TIME:
           // do nothing
@@ -398,7 +400,9 @@ class main implements IPlugin {
   }
 
   @EventHandler(ModLoaderEvents.ON_ROM_PATCHED_POST)
-  onRomPatchedPost(evt: any): void {
+  onRomPatchedPost(evt: any) { }
+
+  onRomPatchedPost_oot(evt: any): void {
     let linkAnimdma: number = 0x7;
 
     this.ModLoader.logger.info("Loading Majora's Mask Jump animations...");
@@ -461,7 +465,9 @@ class main implements IPlugin {
   }
 
   @EventHandler(Z64OnlineEvents.CUSTOM_ANIMATION_BANK_EQUIPPED)
-  reapplyAnimations(offset: number) {
+  reapplyAnimations(offset: number) { }
+
+  reapplyAnimations_functional(offset: number) {
     this.ModLoader.rom.romWriteBuffer(offset + LINK_ANIMETION_OFFSETS.JUMP_FLIP, this.jumpFlipBuf);
     this.ModLoader.rom.romWriteBuffer(offset + LINK_ANIMETION_OFFSETS.LAND_FLIP, this.landFlipBuf);
     this.ModLoader.rom.romWriteBuffer(offset + LINK_ANIMETION_OFFSETS.JUMP_SOMERSAULT, this.jumpSomerBuf);
