@@ -249,6 +249,9 @@ class main implements IPlugin {
 
   @Init()
   init(): void {
+
+    if (!this.isOoT) return;
+
     let zz: zzdata = (this as any)['metadata']['configData'];
 
     /* Default chances of each jump */
