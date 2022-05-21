@@ -1,6 +1,6 @@
 {
   "name": "MM_Jumps",
-  "version": "2.0.0",
+  "version": "1.2.0",
   "description": "Import the flip and somersault jumps from Majora's Mask into Ocarina of Time",
   "credits": "denoflions",
   "main": "MM_Jumps.js",
