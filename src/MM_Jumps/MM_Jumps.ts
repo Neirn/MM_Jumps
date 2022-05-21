@@ -358,7 +358,7 @@ class main implements IPlugin {
             this.jumpNeedsUpdate = true;
             if (this.isSequentialMode[0])
               this.currentJumpInSequence = (this.currentJumpInSequence + 1) % 3;
-            if (this.useRollingSound[0] && this.currentJump === LINK_ANIMETION_OFFSETS.JUMP_FLIP) {
+            if (false && this.useRollingSound[0] && this.currentJump === LINK_ANIMETION_OFFSETS.JUMP_FLIP) {
               this.ModLoader.utils.setTimeoutFrames(() => {
                 this.core.OOT!.commandBuffer.runCommand(Command.PLAYSOUND, NA_SE_PL_ROLL);
               }, 1)
@@ -508,7 +508,7 @@ class main implements IPlugin {
             this.currentJumpInSequence = 0;
             this.jumpNeedsUpdate = true;
           }
-          this.ModLoader.ImGui.checkbox("Rolling jump SFX", this.useRollingSound);
+          // this.ModLoader.ImGui.checkbox("Rolling jump SFX", this.useRollingSound);
           if (this.ModLoader.ImGui.menuItem("Save")) {
             try {
               let zz: zzdata = (this as any)['metadata']['configData'];
